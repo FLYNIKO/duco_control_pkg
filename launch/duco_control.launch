@@ -1,0 +1,4 @@
+<launch>
+    <node name="duco_control" pkg="duco_control_pkg" type="main1.py" output="screen"/>
+</launch>
+
