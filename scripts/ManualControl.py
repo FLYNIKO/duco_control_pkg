@@ -13,7 +13,7 @@ class KeyInputStruct:
     def __init__(self, x0=0, x1=0, y0=0, y1=0, z0=0, z1=0,
                  init=0, serv=0, multi=0, start=0,
                  rx0=0, rx1=0, ry0=0, ry1=0, rz0=0, rz1=0,
-                 clog=0):
+                 clog=0, find=0):
         self.x0 = x0
         self.x1 = x1
         self.y0 = y0
@@ -31,6 +31,8 @@ class KeyInputStruct:
         self.rz0 = rz0
         self.rz1 = rz1
         self.clog = clog
+        self.find = find
+        # TODO: 添加更多按键位的解析
 
 class SimplePID:
     def __init__(self, kp, ki, kd):
@@ -170,7 +172,9 @@ class system_control:
             ry1 = (key_bits >> 13) & 1,
             rz0 = (key_bits >> 14) & 1,
             rz1 = (key_bits >> 15) & 1,
-            clog = (key_bits >> 16) & 1
+            clog = (key_bits >> 16) & 1,
+            find = (key_bits >> 17) & 1,
+            # TODO: 添加更多按键位的解析
         )
     # 第二个及以后的元素为数据
     def get_ctrl_msg(self):
@@ -224,19 +228,29 @@ class system_control:
             print("No position in history.Press LB to record position.")
             time.sleep(0.5)
 
+    # 堵枪清理动作
     def clog_function(self):
         if not self.clog_flag:      # 发生堵枪时第一次按下，转到清理位置，执行清理工作
             self.clog_flag = True
-            tcp_pose = self.duco_cobot.get_tcp_pose()
+            self.tcp_pose = self.duco_cobot.get_tcp_pose()
             self.duco_cobot.servoj_pose(self.clog_pos, self.vel * 1.5, self.acc, '', '', '', True)
             print("已移动到清理堵枪位置: %s" % self.clog_pos)
         else:                       # 堵枪清理结束之后按下按钮，回到之前位置继续工作
             self.clog_flag = False
-            self.duco_cobot.servoj_pose(tcp_pose, self.vel * 1.5, self.acc, '', '', '', True)
+            self.duco_cobot.servoj_pose(self.tcp_pose, self.vel * 1.5, self.acc, '', '', '', True)
             print("已回到堵枪前位置")
+
+    def find_central_pos(self):
+        # TODO:添加按键
+        # 1.上移至边缘并记录top_pos
+        # 2.下移至边缘并记录bottom_pos
+        # 3.计算中心位置_喷嘴和传感器的偏差以及喷嘴和机械臂末端的偏差
+        # 4.移动到中心位置
+        pass
 
     # 自动喷涂，边走边喷
     def auto_paint_sync(self):
+        print("进入自动模式")
         self.autopaint_flag = True
         time.sleep(0.1)  # 防止和退出冲突
         self.front_sensor_history.clear()
@@ -252,7 +266,7 @@ class system_control:
             last_time = now
 
             if sensor_data["front"] == -1:
-                print("front sensor error")
+                print("传感器数据异常无法启动自动程序！")
                 self.autopaint_flag = False
                 self.duco_cobot.speed_stop(True)
                 break
@@ -260,7 +274,7 @@ class system_control:
             side_count = 0
             side_count_threshold = 7 
             while self.anticrash_left != 0 and sensor_data["left"] < self.anticrash_left:
-                v2 = self.auto_vel
+                v2 = self.auto_vel * 2
                 self.duco_cobot.speedl([0, 0, -v2, 0, 0, 0], self.acc, -1, False)
                 time.sleep(0.1)
                 sensor_data = self.get_sensor_data()
@@ -303,6 +317,7 @@ class system_control:
 
             print("v2: %f" % v2)
             self.duco_cobot.speedl([0, 0, v2, 0, 0, 0], self.acc * 0.9, -1, False)
+        print("退出自动模式")
 
     # 自动喷涂，车辆不动机械臂动
     def auto_paint_interval(self):
@@ -359,7 +374,7 @@ class system_control:
         print("waiting for robot initialization...")
         # self.duco_cobot.movej2(self.init_pos, 2*self.vel, self.acc, 0, True)
         self.duco_cobot.servoj_pose(self.init_pos, self.vel, self.acc, '', '', '', True)
-        print("move to initial position: %s" % self.init_pos)
+        print("移动到初始位置: %s" % self.init_pos)
         time.sleep(1)
         
         try:
@@ -380,11 +395,14 @@ class system_control:
                     if not self.emergency_stop_flag:
                         self.auto_paint_sync()
                         # self.auto_paint_interval()
-
+                #堵枪清理
                 elif key_input.clog:
                     if not self.emergency_stop_flag:
                         self.clog_function()
-
+                #寻找梁头的中间位置
+                elif key_input.find:
+                    if not self.emergency_stop_flag:
+                        self.find_central_pos()
                 #机械臂末端向  前
                 elif key_input.x0:
                     self.duco_cobot.speedl([0, 0, v2, 0, 0, 0],self.acc ,-1, False)
