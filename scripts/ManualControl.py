@@ -60,12 +60,15 @@ class system_control:
         self.history_pos = [] # 历史位置
         self.sysrun = True
         self.autopaint_flag = True
+        self.clog_flag = False
+        self.afterclog_auto = False
         self.init_pos = INIT_POS # 初始位置
         self.serv_pos = SERV_POS # 维修位置
         self.safe_pos = SAFE_POS # 安全位置
+        self.clog_pos = CLOG_POS # 堵枪位置
         self.pid = SimplePID(kp=1, ki=0.0, kd=0.2)
         self.pid_z = SimplePID(kp=KP, ki=KI, kd=KD)
-        self.front_sensor_history = deque(maxlen=3) # 滤波队列
+        self.front_sensor_history = deque(maxlen=5) # 滤波队列
 
         self.anticrash_up = ANTICRASH_UP
         self.anticrash_front = ANTICRASH_FRONT
@@ -78,7 +81,7 @@ class system_control:
 
         self.latest_sensor_data = {"up": -1, "front": -1, "left_side": -1, "right_side": -1}
         self.sensor_subscriber = rospy.Subscriber('/STP23', STP23, self._sensor_callback)
-        self.latest_keys = [0] * 32
+        self.latest_keys = [0] * 20
         self.last_key_time = time.time()
         self.last_sensor_time = time.time()
         self.keys_subscriber = rospy.Subscriber('/key_input', KeyInput, self._keys_callback)
@@ -139,7 +142,7 @@ class system_control:
             self.anticrash_right = ANTICRASH_RIGHT
         else:
             key_bits = self.latest_keys[0]
-            if len(self.latest_keys) > 1 and all(self.latest_keys[i] != 0 for i in [1, 2, 3, 4]):
+            if len(self.latest_keys) > 1 and all(self.latest_keys[i] >= 0 for i in [1, 2, 3, 4]):
                 self.anticrash_up = self.latest_keys[1]
                 self.anticrash_front = self.latest_keys[2]
                 self.anticrash_left = self.latest_keys[3]
@@ -220,6 +223,17 @@ class system_control:
         elif len(history_pos) == 0:
             print("No position in history.Press LB to record position.")
             time.sleep(0.5)
+
+    def clog_function(self):
+        if not self.clog_flag:      # 发生堵枪时第一次按下，转到清理位置，执行清理工作
+            self.clog_flag = True
+            tcp_pose = self.duco_cobot.get_tcp_pose()
+            self.duco_cobot.servoj_pose(self.clog_pos, self.vel * 1.5, self.acc, '', '', '', True)
+            print("已移动到清理堵枪位置: %s" % self.clog_pos)
+        else:                       # 堵枪清理结束之后按下按钮，回到之前位置继续工作
+            self.clog_flag = False
+            self.duco_cobot.servoj_pose(tcp_pose, self.vel * 1.5, self.acc, '', '', '', True)
+            print("已回到堵枪前位置")
 
     # 自动喷涂，边走边喷
     def auto_paint_sync(self):
@@ -366,6 +380,10 @@ class system_control:
                     if not self.emergency_stop_flag:
                         self.auto_paint_sync()
                         # self.auto_paint_interval()
+
+                elif key_input.clog:
+                    if not self.emergency_stop_flag:
+                        self.clog_function()
 
                 #机械臂末端向  前
                 elif key_input.x0:
