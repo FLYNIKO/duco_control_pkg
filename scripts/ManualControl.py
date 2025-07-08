@@ -241,16 +241,78 @@ class system_control:
             print("已回到堵枪前位置")
 
     def find_central_pos(self):
-        # TODO:添加按键
+        print("开始寻找钢梁中心位置...")
+        # TODO:
         # 1.上移至边缘并记录top_pos
         # 2.下移至边缘并记录bottom_pos
         # 3.计算中心位置_喷嘴和传感器的偏差以及喷嘴和机械臂末端的偏差
         # 4.移动到中心位置
         pass
 
+    def find_central_pos(self):
+        print("开始寻找钢梁中心位置...")
+
+        scan_range = 1  # 扫描总行程，单位：米
+        step_size = 0.01  # 每次移动的步长，单位：米
+        pause_time = 0.05  # 每次读取后的停顿时间
+        min_jump_threshold = 0.2  # 突变阈值，单位：米
+
+        tcp_pos = self.duco_cobot.get_tcp_pose()
+        start_z = tcp_pos[1]  # 当前 y 方向为上下
+
+        # 保存 [y坐标, 距离值] 对
+        scan_data = []
+
+        print("从上到下开始扫描...")
+
+        steps = int(scan_range / step_size)
+        for i in range(steps):
+            # 向下移动一小步
+            tcp_pos[1] = start_z - i * step_size
+            self.duco_cobot.servoj_pose(tcp_pos, self.vel, self.acc, '', '', '', True)
+            time.sleep(pause_time)
+
+            # 读取前向激光传感器
+            sensor_data = self.get_sensor_data()
+            dist = sensor_data["front"]
+            if dist > 0:
+                scan_data.append((tcp_pos[1], dist))  # 记录当前高度和距离值
+                print(f"scan y={tcp_pos[1]:.3f}m, front={dist:.3f}m")
+
+        print("扫描完成，开始检测突变边缘...")
+
+        edge_positions = []
+        for i in range(1, len(scan_data)):
+            prev = scan_data[i - 1][1]
+            curr = scan_data[i][1]
+            if abs(curr - prev) > min_jump_threshold:
+                y_pos = scan_data[i][0]
+                edge_positions.append(y_pos)
+                print(f"检测到突变边缘在 y={y_pos:.3f}m")
+
+        if len(edge_positions) >= 2:
+            top_edge = edge_positions[0]
+            bottom_edge = edge_positions[-1]
+            center_y = (top_edge + bottom_edge) / 2
+            print(f"中心位置位于 y = {(center_y):.3f}m")
+
+            # 计算目标末端位置
+            center_pos = list(self.duco_cobot.get_tcp_pose())
+            center_pos[1] = center_y
+
+            # 补偿喷嘴与传感器之间的偏移（如果你有）
+            # center_pos[2] += 0.02  # 举例：末端前移 2cm
+
+            self.duco_cobot.servoj_pose(center_pos, self.vel, self.acc, '', '', '', True)
+            print(f"机械臂已移动到中心位置：{center_pos}")
+
+        else:
+            print("未能检测到两个明显边缘，可能钢梁异常或测距异常。")
+
+
     # 自动喷涂，边走边喷
     def auto_paint_sync(self):
-        print("进入自动模式")
+        print("-----进入自动模式-----")
         self.autopaint_flag = True
         time.sleep(0.1)  # 防止和退出冲突
         self.front_sensor_history.clear()
@@ -317,7 +379,7 @@ class system_control:
 
             print("v2: %f" % v2)
             self.duco_cobot.speedl([0, 0, v2, 0, 0, 0], self.acc * 0.9, -1, False)
-        print("退出自动模式")
+        print("-----退出自动模式-----")
 
     # 自动喷涂，车辆不动机械臂动
     def auto_paint_interval(self):
@@ -371,7 +433,7 @@ class system_control:
                 break
 
     def run(self):
-        print("waiting for robot initialization...")
+        print("等待移动到初始位置...")
         # self.duco_cobot.movej2(self.init_pos, 2*self.vel, self.acc, 0, True)
         self.duco_cobot.servoj_pose(self.init_pos, self.vel, self.acc, '', '', '', True)
         print("移动到初始位置: %s" % self.init_pos)
@@ -424,11 +486,11 @@ class system_control:
                 #初始化位置
                 elif key_input.init:
                     self.duco_cobot.servoj_pose(self.init_pos, self.vel, self.acc, '', '', '', True)
-                    print("move to initial position: %s" % self.init_pos)
+                    print("移动到初始位置： %s" % self.init_pos)
                 #维修位置
                 elif key_input.serv:
                     self.duco_cobot.servoj_pose(self.serv_pos, self.vel, self.acc, '', '', '', True)
-                    print("move to service position: %s" % self.serv_pos)
+                    print("移动到维修位置： %s" % self.serv_pos)
                 #机械臂末端转  pitch上
                 elif key_input.rx0: 
                     self.duco_cobot.speedl([0, 0, 0, 0, 0, v5], self.acc, -1, False)
