@@ -240,27 +240,19 @@ class system_control:
             self.duco_cobot.servoj_pose(self.tcp_pose, self.vel * 1.5, self.acc, '', '', '', True)
             print("已回到堵枪前位置")
 
-    def find_central_pos(self):
-        print("开始寻找钢梁中心位置...")
-        # TODO:
-        # 1.上移至边缘并记录top_pos
-        # 2.下移至边缘并记录bottom_pos
-        # 3.计算中心位置_喷嘴和传感器的偏差以及喷嘴和机械臂末端的偏差
-        # 4.移动到中心位置
-        pass
-
+    # 自动寻找钢梁中心位置
     def find_central_pos(self):
         print("开始寻找钢梁中心位置...")
 
-        scan_range = 1  # 扫描总行程，单位：米
+        scan_range = 0.7  # 扫描总行程，单位：米
         step_size = 0.01  # 每次移动的步长，单位：米
         pause_time = 0.05  # 每次读取后的停顿时间
-        min_jump_threshold = 0.2  # 突变阈值，单位：米
+        min_jump_threshold = 20  # 突变阈值，单位：mm
 
         tcp_pos = self.duco_cobot.get_tcp_pose()
-        start_z = tcp_pos[1]  # 当前 y 方向为上下
+        start_z = tcp_pos[2]  # 当前 z 方向为上下
 
-        # 保存 [y坐标, 距离值] 对
+        # 保存 [z坐标, 距离值] 对
         scan_data = []
 
         print("从上到下开始扫描...")
@@ -268,16 +260,18 @@ class system_control:
         steps = int(scan_range / step_size)
         for i in range(steps):
             # 向下移动一小步
-            tcp_pos[1] = start_z - i * step_size
-            self.duco_cobot.servoj_pose(tcp_pos, self.vel, self.acc, '', '', '', True)
+            self.duco_cobot.speedl([0, self.vel, 0, 0, 0, 0],self.acc ,-1, False)
+
+            # tcp_pos[2] = start_z - i * step_size
+            # self.duco_cobot.servoj_pose(tcp_pos, self.vel, self.acc, '', '', '', True)
             time.sleep(pause_time)
 
             # 读取前向激光传感器
             sensor_data = self.get_sensor_data()
             dist = sensor_data["front"]
             if dist > 0:
-                scan_data.append((tcp_pos[1], dist))  # 记录当前高度和距离值
-                print(f"scan y={tcp_pos[1]:.3f}m, front={dist:.3f}m")
+                scan_data.append((tcp_pos[2], dist))  # 记录当前高度和距离值
+                print(f"scan z={tcp_pos[2]:.3f}m, front={dist:.3f}m")
 
         print("扫描完成，开始检测突变边缘...")
 
@@ -286,22 +280,22 @@ class system_control:
             prev = scan_data[i - 1][1]
             curr = scan_data[i][1]
             if abs(curr - prev) > min_jump_threshold:
-                y_pos = scan_data[i][0]
-                edge_positions.append(y_pos)
-                print(f"检测到突变边缘在 y={y_pos:.3f}m")
+                z_pos = scan_data[i][0]
+                edge_positions.append(z_pos)
+                print(f"检测到突变边缘在 z={z_pos:.3f}m")
 
         if len(edge_positions) >= 2:
             top_edge = edge_positions[0]
             bottom_edge = edge_positions[-1]
-            center_y = (top_edge + bottom_edge) / 2
-            print(f"中心位置位于 y = {(center_y):.3f}m")
+            center_z = (top_edge + bottom_edge) / 2
+            print(f"中心位置位于 z = {(center_z):.3f}m")
 
             # 计算目标末端位置
             center_pos = list(self.duco_cobot.get_tcp_pose())
-            center_pos[1] = center_y
+            center_pos[2] = center_z
 
-            # 补偿喷嘴与传感器之间的偏移（如果你有）
-            # center_pos[2] += 0.02  # 举例：末端前移 2cm
+            # 补偿喷嘴与传感器之间的偏移
+            center_pos[2] += 0.11
 
             self.duco_cobot.servoj_pose(center_pos, self.vel, self.acc, '', '', '', True)
             print(f"机械臂已移动到中心位置：{center_pos}")
