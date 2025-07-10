@@ -17,6 +17,12 @@ KI = 0.0
 KD = 0.0001
 DEADZONE = 30 # PID死区 (mm)
 
+SCAN_RANGE = 0.7 # 扫描范围(m)_比钢梁高度大0.2
+SCAN_STEP = 0.01 # 扫描步长(m)_default: 0.01
+SCAN_PAUSE = 0.05 # 扫描暂停时间(s)_default: 0.05
+SCAN_JUMP = 50 # 突变阈值(mm)_default: 50
+SCAN_ADJUST = 0.11 # 扫描校准(m)_传感器到喷嘴的z轴距离
+
 PAINTDEG = 90 # 喷涂角度(圆柱)
 PAINTWIDTH = 0.15 # 喷涂宽度(圆柱)
 

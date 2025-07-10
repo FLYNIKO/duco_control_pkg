@@ -72,6 +72,12 @@ class system_control:
         self.pid_z = SimplePID(kp=KP, ki=KI, kd=KD)
         self.front_sensor_history = deque(maxlen=5) # 滤波队列
 
+        self.scan_range = SCAN_RANGE  # 扫描总行程，单位：m
+        self.step_size = SCAN_STEP  # 每次移动的步长，单位：m
+        self.pause_time = SCAN_PAUSE  # 每次读取后的停顿时间
+        self.min_jump_threshold = SCAN_JUMP  # 突变阈值，单位：mm
+        self.scan_adjust = SCAN_ADJUST  # 扫描校准，单位：m
+
         self.anticrash_up = ANTICRASH_UP
         self.anticrash_front = ANTICRASH_FRONT
         self.anticrash_left = ANTICRASH_LEFT
@@ -244,11 +250,6 @@ class system_control:
     def find_central_pos(self):
         print("开始寻找钢梁中心位置...")
 
-        scan_range = 0.7  # 扫描总行程，单位：米
-        step_size = 0.01  # 每次移动的步长，单位：米
-        pause_time = 0.05  # 每次读取后的停顿时间
-        min_jump_threshold = 20  # 突变阈值，单位：mm
-
         tcp_pos = self.duco_cobot.get_tcp_pose()
         start_z = tcp_pos[2]  # 当前 z 方向为上下
 
@@ -257,14 +258,12 @@ class system_control:
 
         print("从上到下开始扫描...")
 
-        steps = int(scan_range / step_size)
+        steps = int(self.scan_range / self.step_size)
         for i in range(steps):
             # 向下移动一小步
-            self.duco_cobot.speedl([0, self.vel, 0, 0, 0, 0],self.acc ,-1, False)
-
-            # tcp_pos[2] = start_z - i * step_size
-            # self.duco_cobot.servoj_pose(tcp_pos, self.vel, self.acc, '', '', '', True)
-            time.sleep(pause_time)
+            tcp_pos[2] = start_z - i * self.step_size
+            self.duco_cobot.servoj_pose(tcp_pos, self.vel, self.acc, '', '', '', True)
+            time.sleep(self.pause_time)
 
             # 读取前向激光传感器
             sensor_data = self.get_sensor_data()
@@ -279,7 +278,7 @@ class system_control:
         for i in range(1, len(scan_data)):
             prev = scan_data[i - 1][1]
             curr = scan_data[i][1]
-            if abs(curr - prev) > min_jump_threshold:
+            if abs(curr - prev) > self.min_jump_threshold:
                 z_pos = scan_data[i][0]
                 edge_positions.append(z_pos)
                 print(f"检测到突变边缘在 z={z_pos:.3f}m")
@@ -294,8 +293,8 @@ class system_control:
             center_pos = list(self.duco_cobot.get_tcp_pose())
             center_pos[2] = center_z
 
-            # 补偿喷嘴与传感器之间的偏移
-            center_pos[2] += 0.11
+            # 补偿喷嘴与传感器之间的偏移,单位：m
+            center_pos[2] += self.scan_adjust
 
             self.duco_cobot.servoj_pose(center_pos, self.vel, self.acc, '', '', '', True)
             print(f"机械臂已移动到中心位置：{center_pos}")
