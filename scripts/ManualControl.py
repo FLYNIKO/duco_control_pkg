@@ -297,7 +297,7 @@ class system_control:
             center_pos[2] += self.scan_adjust
 
             self.duco_cobot.servoj_pose(center_pos, self.vel, self.acc, '', '', '', True)
-            print(f"机械臂已移动到中心位置：{center_pos}")
+            print(f"机械臂喷嘴已移动到中心位置：{center_pos}")
 
         else:
             print("未能检测到两个明显边缘，可能钢梁异常或测距异常。")
