@@ -60,7 +60,7 @@ class system_control:
         self.aj_pos = [] # 当前关节角度
         self.tcp_pos = [] # 当前末端位姿
         self.sysrun = True
-        self.autopaint_flag = True
+        self.autopaint_flag = False
         self.clog_flag = False
         self.clog_auto = False
         self.init_pos = INIT_POS # 初始位置
@@ -220,6 +220,13 @@ class system_control:
     # 自动寻找钢梁中心位置
     def find_central_pos(self):
         print("开始寻找钢梁中心位置...")
+        sensor_data = self.get_sensor_data()
+
+        if sensor_data["front"] == -1:
+            print("传感器数据异常无法启动自动程序！")
+            self.autopaint_flag = False
+            self.duco_cobot.speed_stop(True)
+            return
 
         tcp_pos = self.duco_cobot.get_tcp_pose()
         start_z = tcp_pos[2]  # 当前 z 方向为上下
@@ -232,6 +239,9 @@ class system_control:
         steps = int(self.scan_range / self.step_size)
         for i in range(steps):
             # 向下移动一小步
+            if self.emergency_stop_flag:
+                print("检测到急停信号，停止寻找钢梁中心位置！")
+                return
             tcp_pos[2] = start_z - i * self.step_size
             self.duco_cobot.servoj_pose(tcp_pos, self.vel, self.acc, '', '', '', True)
             time.sleep(self.pause_time)
@@ -247,6 +257,9 @@ class system_control:
 
         edge_positions = []
         for i in range(1, len(scan_data)):
+            if self.emergency_stop_flag:
+                print("检测到急停信号，停止寻找钢梁中心位置！")
+                return
             prev = scan_data[i - 1][1]
             curr = scan_data[i][1]
             if abs(curr - prev) > self.min_jump_threshold:
@@ -412,7 +425,7 @@ class system_control:
                 key_input = self.get_key_input()
                 sensor_data = self.get_sensor_data()
                 self.duco_cobot.switch_mode(1)
-                self.clog_auto = False
+                self.autopaint_flag = False
 
                 v0 = self.auto_vel                # arm left-/right+
                 v1 = self.auto_vel                 # arm up+/down-
