@@ -15,7 +15,7 @@ DEFAULT_ACC = 0.8 # 机械臂末端加速度
 KP = 0.005
 KI = 0.0
 KD = 0.0001
-DEADZONE = 30 # PID死区 (mm)
+DEADZONE = 20 # PID死区 (mm)
 
 SCAN_RANGE = 0.7 # 扫描范围(m)_比钢梁高度大0.2
 SCAN_STEP = 0.01 # 扫描步长(m)_default: 0.01

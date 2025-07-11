@@ -59,11 +59,10 @@ class system_control:
         self.acc = DEFAULT_ACC # 机械臂末端加速度
         self.aj_pos = [] # 当前关节角度
         self.tcp_pos = [] # 当前末端位姿
-        self.history_pos = [] # 历史位置
         self.sysrun = True
         self.autopaint_flag = True
         self.clog_flag = False
-        self.afterclog_auto = False
+        self.clog_auto = False
         self.init_pos = INIT_POS # 初始位置
         self.serv_pos = SERV_POS # 维修位置
         self.safe_pos = SAFE_POS # 安全位置
@@ -72,6 +71,7 @@ class system_control:
         self.pid_z = SimplePID(kp=KP, ki=KI, kd=KD)
         self.front_sensor_history = deque(maxlen=5) # 滤波队列
 
+        self.paint_center = [] # 喷涂中心点
         self.scan_range = SCAN_RANGE  # 扫描总行程，单位：m
         self.step_size = SCAN_STEP  # 每次移动的步长，单位：m
         self.pause_time = SCAN_PAUSE  # 每次读取后的停顿时间
@@ -180,7 +180,7 @@ class system_control:
             rz1 = (key_bits >> 15) & 1,
             clog = (key_bits >> 16) & 1,
             find = (key_bits >> 17) & 1,
-            # TODO: 添加更多按键位的解析
+            # TODO: 添加更多按键位的解析_max=31
         )
     # 第二个及以后的元素为数据
     def get_ctrl_msg(self):
@@ -201,39 +201,6 @@ class system_control:
             self.latest_sensor_data = {"up": -1, "front": -1, "left_side": -1, "right_side": -1}
         return self.latest_sensor_data
     
-    # 记录当前位置
-    def get_replay_pos(self, tcp_pos, history_pos=None):
-        history_pos.append(tcp_pos)
-        print("new position: %s counter: %d" % (tcp_pos, len(history_pos)))
-        time.sleep(0.5)
-
-    # 回放历史位置
-    def position_replay(self, tcp_pos, history_pos=None):
-        for tcp_pos in history_pos:
-            try:
-                index = history_pos.index(tcp_pos) + 1
-                task_id = self.duco_cobot.movel(tcp_pos, self.vel, self.acc, 0, '', '', '', False)
-                print("move to no.%d position: %s" % (index, tcp_pos))
-                cur_time = time.time()
-                while self.duco_cobot.get_noneblock_taskstate(task_id) != 4:
-                    if time.time() - cur_time > 10:
-                        print("Timeout.Move to no.%d position failed." % index)
-                        break
-                    
-                    if self.duco_cobot.get_noneblock_taskstate(task_id) == 4:
-                        break
-                                
-            except ValueError:
-                print("Position %s not found in history." % tcp_pos)
-        # 回到起始位置
-        if len(history_pos) > 1:
-            self.duco_cobot.movel(history_pos[0], self.vel, self.acc, 0, '', '', '', False)
-            print("move to no.1 position: %s" % history_pos[0])
-        # 无点位可回放
-        elif len(history_pos) == 0:
-            print("No position in history.Press LB to record position.")
-            time.sleep(0.5)
-
     # 堵枪清理动作
     def clog_function(self):
         if not self.clog_flag:      # 发生堵枪时第一次按下，转到清理位置，执行清理工作
@@ -241,10 +208,14 @@ class system_control:
             self.tcp_pose = self.duco_cobot.get_tcp_pose()
             self.duco_cobot.servoj_pose(self.clog_pos, self.vel * 1.5, self.acc, '', '', '', True)
             print("已移动到清理堵枪位置: %s" % self.clog_pos)
+            if self.autopaint_flag:
+                print("自动喷涂模式已暂停，待再次按下堵枪按钮时恢复位置并继续自动喷涂模式")
         else:                       # 堵枪清理结束之后按下按钮，回到之前位置继续工作
             self.clog_flag = False
             self.duco_cobot.servoj_pose(self.tcp_pose, self.vel * 1.5, self.acc, '', '', '', True)
             print("已回到堵枪前位置")
+            if self.autopaint_flag:
+                print("自动喷涂模式已恢复")
 
     # 自动寻找钢梁中心位置
     def find_central_pos(self):
@@ -253,7 +224,7 @@ class system_control:
         tcp_pos = self.duco_cobot.get_tcp_pose()
         start_z = tcp_pos[2]  # 当前 z 方向为上下
 
-        # 保存 [z坐标, 距离值] 对
+        # 保存 [z坐标, 距离值]
         scan_data = []
 
         print("从上到下开始扫描...")
@@ -295,7 +266,7 @@ class system_control:
 
             # 补偿喷嘴与传感器之间的偏移,单位：m
             center_pos[2] += self.scan_adjust
-
+            self.paint_center = center_pos
             self.duco_cobot.servoj_pose(center_pos, self.vel, self.acc, '', '', '', True)
             print(f"机械臂喷嘴已移动到中心位置：{center_pos}")
 
@@ -307,7 +278,7 @@ class system_control:
     def auto_paint_sync(self):
         print("-----进入自动模式-----")
         self.autopaint_flag = True
-        time.sleep(0.1)  # 防止和退出冲突
+        self.clog_auto = True
         self.front_sensor_history.clear()
         v2 = 0.0  # 初始化前后速度
         cur_time = time.time()
@@ -316,6 +287,7 @@ class system_control:
         while self.autopaint_flag:
             sensor_data = self.get_sensor_data()
             tcp_pos = self.duco_cobot.get_tcp_pose()
+            key_input = self.get_key_input()
             now = time.time()
             dt = now - last_time
             last_time = now
@@ -326,9 +298,13 @@ class system_control:
                 self.duco_cobot.speed_stop(True)
                 break
 
+            if key_input.clog:
+                self.clog_function()
+                continue
+
             side_count = 0
             side_count_threshold = 7 
-            while self.anticrash_left != 0 and sensor_data["left"] < self.anticrash_left:
+            while self.anticrash_left != 0 and sensor_data["left"] < self.anticrash_left and not self.clog_flag:
                 v2 = self.auto_vel * 2
                 self.duco_cobot.speedl([0, 0, -v2, 0, 0, 0], self.acc, -1, False)
                 time.sleep(0.1)
@@ -350,7 +326,7 @@ class system_control:
             
             # PID with filter
             v2 = 0.0  # x轴默认速度为0
-            if self.anticrash_front != 0:
+            if self.anticrash_front != 0 and not self.clog_flag:
                 # 1. 数据滤波
                 raw_front_dist = sensor_data["front"]
                 if raw_front_dist > 0:  # 确保是有效读数
@@ -430,13 +406,13 @@ class system_control:
         # self.duco_cobot.movej2(self.init_pos, 2*self.vel, self.acc, 0, True)
         self.duco_cobot.servoj_pose(self.init_pos, self.vel, self.acc, '', '', '', True)
         print("移动到初始位置: %s" % self.init_pos)
-        time.sleep(1)
         
         try:
             while self.sysrun and not rospy.is_shutdown():
                 key_input = self.get_key_input()
                 sensor_data = self.get_sensor_data()
                 self.duco_cobot.switch_mode(1)
+                self.clog_auto = False
 
                 v0 = self.auto_vel                # arm left-/right+
                 v1 = self.auto_vel                 # arm up+/down-
@@ -487,11 +463,9 @@ class system_control:
                 #机械臂末端转  pitch上
                 elif key_input.rx0: 
                     self.duco_cobot.speedl([0, 0, 0, 0, 0, v5], self.acc, -1, False)
-                    time.sleep(0.05)
                 #机械臂末端转  pitch下
                 elif key_input.rx1: 
                     self.duco_cobot.speedl([0, 0, 0, 0, 0, -v5], self.acc, -1, False)
-                    time.sleep(0.05)
                 #机械臂末端转  roll左
                 elif key_input.ry0: 
                     self.duco_cobot.speedl([0, 0, 0, v3, 0, 0], self.acc, -1, False)
