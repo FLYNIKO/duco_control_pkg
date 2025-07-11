@@ -205,21 +205,21 @@ class system_control:
     def clog_function(self):
         if not self.clog_flag:      # 发生堵枪时第一次按下，转到清理位置，执行清理工作
             self.clog_flag = True
-            self.tcp_pose = self.duco_cobot.get_tcp_pose()
+            self.tcp_pos = self.duco_cobot.get_tcp_pose()
             self.duco_cobot.servoj_pose(self.clog_pos, self.vel * 1.5, self.acc, '', '', '', True)
             print("已移动到清理堵枪位置: %s" % self.clog_pos)
             if self.autopaint_flag:
                 print("自动喷涂模式已暂停，待再次按下堵枪按钮时恢复位置并继续自动喷涂模式")
         else:                       # 堵枪清理结束之后按下按钮，回到之前位置继续工作
             self.clog_flag = False
-            self.duco_cobot.servoj_pose(self.tcp_pose, self.vel * 1.5, self.acc, '', '', '', True)
-            print("已回到堵枪前位置")
+            self.duco_cobot.servoj_pose(self.tcp_pos, self.vel * 1.5, self.acc, '', '', '', True)
+            print("已回到堵枪前位置: %s" % self.tcp_pos)
             if self.autopaint_flag:
                 print("自动喷涂模式已恢复")
 
     # 自动寻找钢梁中心位置
     def find_central_pos(self):
-        print("开始寻找钢梁中心位置...")
+        print("------开始寻找钢梁中心位置------")
         sensor_data = self.get_sensor_data()
 
         if sensor_data["front"] == -1:
@@ -231,8 +231,7 @@ class system_control:
         tcp_pos = self.duco_cobot.get_tcp_pose()
         start_z = tcp_pos[2]  # 当前 z 方向为上下
 
-        # 保存 [z坐标, 距离值]
-        scan_data = []
+        scan_data = []  # 保存 [z坐标, 距离值]
 
         print("从上到下开始扫描...")
 
