@@ -50,7 +50,12 @@ class DemoApp:
             tcp_pos = self.duco_thread.get_tcp_pose()
             tcp_state = self.duco_thread.get_robot_state()
             sensor_data = self.sys_ctrl.get_sensor_data()
-            dist = [sensor_data["front"], sensor_data["up"], sensor_data["left"], sensor_data["right"]]
+            stp23_raw = [
+                sensor_data.get("up", -1),
+                sensor_data.get("front", -1),
+                sensor_data.get("left", -1),
+                sensor_data.get("right", -1)
+            ]
             if self.sys_ctrl is not None:
                 anticrash_threshold = [
                     self.sys_ctrl.anticrash_up,
@@ -64,7 +69,7 @@ class DemoApp:
             self.tcp_state = tcp_state
             # 发布 ROS topic
             msg = Float64MultiArray()
-            msg.data = tcp_state + tcp_pos + anticrash_threshold + dist
+            msg.data = tcp_state + tcp_pos + anticrash_threshold + stp23_raw
             self.tcp_pub.publish(msg)
             self._stop_event.wait(0.2)
         self.duco_thread.close()
