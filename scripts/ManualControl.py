@@ -72,6 +72,8 @@ class system_control:
         self.front_sensor_history = deque(maxlen=5) # 滤波队列
 
         self.paint_center = [] # 喷涂中心点
+        self.paint_beam_height = 0.0 # 喷涂垂直方向高度，单位：m
+        self.paint_fender_width = 0.0 # 喷涂翼子板宽度，单位：m
         self.scan_range = SCAN_RANGE  # 扫描总行程，单位：m
         self.step_size = SCAN_STEP  # 每次移动的步长，单位：m
         self.pause_time = SCAN_PAUSE  # 每次读取后的停顿时间
@@ -263,14 +265,26 @@ class system_control:
             curr = scan_data[i][1]
             if abs(curr - prev) > self.min_jump_threshold:
                 z_pos = scan_data[i][0]
-                edge_positions.append(z_pos)
+                dist = scan_data[i][1]
+                edge_positions.append((z_pos, dist))
                 print(f"检测到突变边缘在 z={z_pos:.3f}m")
 
+        if len(edge_positions) >= 4:
+            top_diff = abs(edge_positions[0][1] - edge_positions[1][1])
+            bottom_diff = abs(edge_positions[-1][1] - edge_positions[-2][1])
+            if abs(top_diff - bottom_diff) < 15:
+                self.paint_fender_width = abs(edge_positions[0][1] - edge_positions[1][1])
+            else :
+                self.paint_fender_width = -1 # 无法计算翼子板宽度
+        else:
+            self.paint_fender_width = -1 # 无法计算翼子板宽度
+
         if len(edge_positions) >= 2:
-            top_edge = edge_positions[0]
-            bottom_edge = edge_positions[-1]
+            top_edge = edge_positions[0][0]
+            bottom_edge = edge_positions[-1][0]
             center_z = (top_edge + bottom_edge) / 2
-            print(f"中心位置位于 z = {(center_z):.3f}m")
+            self.paint_beam_height = abs(top_edge - bottom_edge) * 1000  # 单位：mm
+            print(f"-----\n钢梁数据：\n中心位置位于 z = {(center_z):.3f}m \n高度为 {self.paint_beam_height:.3f}mm \n翼子板宽度为 {self.paint_fender_width:.3f}mm \n-----")
 
             # 计算目标末端位置
             center_pos = list(self.duco_cobot.get_tcp_pose())
