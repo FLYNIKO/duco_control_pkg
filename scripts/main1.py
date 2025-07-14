@@ -49,6 +49,8 @@ class DemoApp:
         while not self.stopheartthread:
             tcp_pos = self.duco_thread.get_tcp_pose()
             tcp_state = self.duco_thread.get_robot_state()
+            sensor_data = self.sys_ctrl.get_sensor_data()
+            dist = [sensor_data["front"], sensor_data["up"], sensor_data["left"], sensor_data["right"]]
             if self.sys_ctrl is not None:
                 anticrash_threshold = [
                     self.sys_ctrl.anticrash_up,
@@ -62,9 +64,9 @@ class DemoApp:
             self.tcp_state = tcp_state
             # 发布 ROS topic
             msg = Float64MultiArray()
-            msg.data = tcp_state + tcp_pos + anticrash_threshold
+            msg.data = tcp_state + tcp_pos + anticrash_threshold + dist
             self.tcp_pub.publish(msg)
-            self._stop_event.wait(1)
+            self._stop_event.wait(0.2)
         self.duco_thread.close()
 
     def run(self):
