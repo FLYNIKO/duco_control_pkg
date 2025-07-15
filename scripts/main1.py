@@ -65,12 +65,12 @@ class DemoApp:
                     self.sys_ctrl.anticrash_right
                 ]
                 scan_threshold = [
-                    self.sys_ctrl.scan_range * 100,
+                    self.sys_ctrl.scan_range * 1000,
                     self.sys_ctrl.min_jump_threshold,
                 ]
             else:
                 anticrash_threshold = [ANTICRASH_UP, ANTICRASH_FRONT, ANTICRASH_LEFT, ANTICRASH_RIGHT]
-                scan_threshold = [SCAN_RANGE * 100, SCAN_JUMP, SCAN_ADJUST * 100]
+                scan_threshold = [SCAN_RANGE * 1000, SCAN_JUMP]
             
             self.tcp_state = tcp_state
             # 发布 ROS topic

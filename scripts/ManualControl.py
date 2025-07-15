@@ -165,7 +165,7 @@ class system_control:
                 self.anticrash_front = self.latest_keys[2]
                 self.anticrash_left = self.latest_keys[3]
                 self.anticrash_right = self.latest_keys[4]
-                self.scan_range = self.latest_keys[5] / 100
+                self.scan_range = self.latest_keys[5] / 1000
                 self.min_jump_threshold = self.latest_keys[6]
             else:
                 self.anticrash_up = ANTICRASH_UP
