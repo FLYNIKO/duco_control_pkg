@@ -68,6 +68,10 @@ class DemoApp:
                     self.sys_ctrl.scan_range * 1000,
                     self.sys_ctrl.min_jump_threshold,
                 ]
+                paint_threshould = [
+                    self.sys_ctrl.paint_beam_height,
+                    self.sys_ctrl.paint_fender_width
+                ]
             else:
                 anticrash_threshold = [ANTICRASH_UP, ANTICRASH_FRONT, ANTICRASH_LEFT, ANTICRASH_RIGHT]
                 scan_threshold = [SCAN_RANGE * 1000, SCAN_JUMP]
@@ -79,7 +83,7 @@ class DemoApp:
             self.tcp_pub.publish(msg)
 
             adjust_msg = Float64MultiArray()
-            adjust_msg.data = anticrash_threshold + scan_threshold
+            adjust_msg.data = anticrash_threshold + scan_threshold + paint_threshould
             self.adjust_pub.publish(adjust_msg)
 
             self._stop_event.wait(0.2)

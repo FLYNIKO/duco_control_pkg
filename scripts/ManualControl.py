@@ -77,8 +77,8 @@ class system_control:
         self.paint_center = [] # 喷涂中心点
         self.paint_top = []
         self.paint_bottom = []
-        self.paint_beam_height = 0.0 # 喷涂垂直方向高度，单位：m
-        self.paint_fender_width = 0.0 # 喷涂翼子板宽度，单位：m
+        self.paint_beam_height = 0.0 # 喷涂垂直方向高度，单位：mm
+        self.paint_fender_width = 0.0 # 喷涂翼子板宽度，单位：mm
         self.scan_range = SCAN_RANGE  # 扫描总行程，单位：m
         self.step_size = SCAN_STEP  # 每次移动的步长，单位：m
         self.pause_time = SCAN_PAUSE  # 每次读取后的停顿时间
