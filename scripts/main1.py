@@ -12,7 +12,6 @@ from DucoCobot import DucoCobot
 from thrift import Thrift
 from ManualControl import system_control
 from std_msgs.msg import Float64MultiArray
-from std_msgs.msg import Int32MultiArray
 from config import *
 
 class DemoApp:
@@ -24,7 +23,7 @@ class DemoApp:
         self.thread = threading.Thread(target=self.thread_fun)
         self.tcp_state = []  
         self.tcp_pub = rospy.Publisher('/Duco_state', Float64MultiArray, queue_size=20)
-        self.adjust_pub = rospy.Publisher('/Duco_adjust', Int32MultiArray, queue_size=20) 
+        self.adjust_pub = rospy.Publisher('/Duco_adjust', Float64MultiArray, queue_size=20) 
         self.sys_ctrl = None 
 
     def robot_connect(self):
@@ -80,7 +79,7 @@ class DemoApp:
             msg.data = tcp_state + tcp_pos + stp23_raw
             self.tcp_pub.publish(msg)
 
-            adjust_msg = Int32MultiArray()
+            adjust_msg = Float64MultiArray()
             adjust_msg.data = anticrash_threshold + scan_threshold
             self.adjust_pub.publish(adjust_msg)
 
