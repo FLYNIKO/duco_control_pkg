@@ -22,7 +22,8 @@ class DemoApp:
         self.hearthread = threading.Thread(target=self.hearthread_fun)
         self.thread = threading.Thread(target=self.thread_fun)
         self.tcp_state = []  
-        self.tcp_pub = rospy.Publisher('/Duco_state', Float64MultiArray, queue_size=10)
+        self.tcp_pub = rospy.Publisher('/Duco_state', Float64MultiArray, queue_size=20)
+        self.adjust_pub = rospy.Publisher('/Duco_adjust', Float64MultiArray, queue_size=20) 
         self.sys_ctrl = None 
 
     def robot_connect(self):
@@ -62,15 +63,26 @@ class DemoApp:
                     self.sys_ctrl.anticrash_front,
                     self.sys_ctrl.anticrash_left,
                     self.sys_ctrl.anticrash_right
-                ]            
+                ]
+                scan_threshold = [
+                    self.sys_ctrl.scan_range,
+                    self.sys_ctrl.min_jump_threshold,
+                    self.sys_ctrl.scan_adjust
+                ]
             else:
                 anticrash_threshold = [ANTICRASH_UP, ANTICRASH_FRONT, ANTICRASH_LEFT, ANTICRASH_RIGHT]
+                scan_threshold = [SCAN_RANGE, SCAN_JUMP, SCAN_ADJUST]
             
             self.tcp_state = tcp_state
             # 发布 ROS topic
             msg = Float64MultiArray()
-            msg.data = tcp_state + tcp_pos + anticrash_threshold + stp23_raw
+            msg.data = tcp_state + tcp_pos + stp23_raw
             self.tcp_pub.publish(msg)
+
+            adjust_msg = Float64MultiArray()
+            adjust_msg.data = anticrash_threshold + scan_threshold
+            self.adjust_pub.publish(adjust_msg)
+
             self._stop_event.wait(0.2)
         self.duco_thread.close()
 

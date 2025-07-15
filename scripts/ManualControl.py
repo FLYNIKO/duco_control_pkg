@@ -150,13 +150,19 @@ class system_control:
             self.anticrash_front = ANTICRASH_FRONT
             self.anticrash_left = ANTICRASH_LEFT
             self.anticrash_right = ANTICRASH_RIGHT
+            self.scan_range = SCAN_RANGE
+            self.min_jump_threshold = SCAN_JUMP
+            self.scan_adjust = SCAN_ADJUST
         else:
             key_bits = self.latest_keys[0]
-            if len(self.latest_keys) > 1 and all(self.latest_keys[i] >= 0 for i in [1, 2, 3, 4]):
+            if len(self.latest_keys) > 1 and all(self.latest_keys[i] >= 0 for i in [1, 2, 3, 4, 5, 6, 7]):
                 self.anticrash_up = self.latest_keys[1]
                 self.anticrash_front = self.latest_keys[2]
                 self.anticrash_left = self.latest_keys[3]
                 self.anticrash_right = self.latest_keys[4]
+                self.scan_range = self.latest_keys[5]
+                self.min_jump_threshold = self.latest_keys[6]
+                self.scan_adjust = self.latest_keys[7]
             else:
                 self.anticrash_up = ANTICRASH_UP
                 self.anticrash_front = ANTICRASH_FRONT
