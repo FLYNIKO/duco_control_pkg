@@ -13,7 +13,7 @@ class KeyInputStruct:
     def __init__(self, x0=0, x1=0, y0=0, y1=0, z0=0, z1=0,
                  init=0, serv=0, multi=0, start=0,
                  rx0=0, rx1=0, ry0=0, ry1=0, rz0=0, rz1=0,
-                 clog=0, find=0):
+                 clog=0, find=0, top=0, center=0, bottom=0):
         self.x0 = x0
         self.x1 = x1
         self.y0 = y0
@@ -32,6 +32,9 @@ class KeyInputStruct:
         self.rz1 = rz1
         self.clog = clog
         self.find = find
+        self.top = top
+        self.center = center
+        self.bottom = bottom
         # TODO: 添加更多按键位的解析
 
 class SimplePID:
@@ -72,6 +75,8 @@ class system_control:
         self.front_sensor_history = deque(maxlen=5) # 滤波队列
 
         self.paint_center = [] # 喷涂中心点
+        self.paint_top = []
+        self.paint_bottom = []
         self.paint_beam_height = 0.0 # 喷涂垂直方向高度，单位：m
         self.paint_fender_width = 0.0 # 喷涂翼子板宽度，单位：m
         self.scan_range = SCAN_RANGE  # 扫描总行程，单位：m
@@ -170,24 +175,27 @@ class system_control:
                 self.anticrash_right = ANTICRASH_RIGHT
         # 按位解析
         return KeyInputStruct(
-            x0 = (key_bits >> 0) & 1,
-            x1 = (key_bits >> 1) & 1,
-            y0 = (key_bits >> 2) & 1,
-            y1 = (key_bits >> 3) & 1,
-            z0 = (key_bits >> 4) & 1,
-            z1 = (key_bits >> 5) & 1,
-            init = (key_bits >> 6) & 1,
-            serv = (key_bits >> 7) & 1,
-            multi = (key_bits >> 8) & 1,
-            start = (key_bits >> 9) & 1,
-            rx0 = (key_bits >> 10) & 1,
-            rx1 = (key_bits >> 11) & 1,
-            ry0 = (key_bits >> 12) & 1,
-            ry1 = (key_bits >> 13) & 1,
-            rz0 = (key_bits >> 14) & 1,
-            rz1 = (key_bits >> 15) & 1,
-            clog = (key_bits >> 16) & 1,
-            find = (key_bits >> 17) & 1,
+            x0      = (key_bits >> 0) & 1,
+            x1      = (key_bits >> 1) & 1,
+            y0      = (key_bits >> 2) & 1,
+            y1      = (key_bits >> 3) & 1,
+            z0      = (key_bits >> 4) & 1,
+            z1      = (key_bits >> 5) & 1,
+            init    = (key_bits >> 6) & 1,
+            serv    = (key_bits >> 7) & 1,
+            multi   = (key_bits >> 8) & 1,
+            start   = (key_bits >> 9) & 1,
+            rx0     = (key_bits >> 10) & 1,
+            rx1     = (key_bits >> 11) & 1,
+            ry0     = (key_bits >> 12) & 1,
+            ry1     = (key_bits >> 13) & 1,
+            rz0     = (key_bits >> 14) & 1,
+            rz1     = (key_bits >> 15) & 1,
+            clog    = (key_bits >> 16) & 1,
+            find    = (key_bits >> 17) & 1,
+            top     = (key_bits >> 18) & 1,
+            center  = (key_bits >> 19) & 1,
+            bottom  = (key_bits >> 20) & 1,
             # TODO: 添加更多按键位的解析_max=31
         )
     # 第二个及以后的元素为数据
@@ -492,6 +500,27 @@ class system_control:
                 elif key_input.serv:
                     self.duco_cobot.servoj_pose(self.serv_pos, self.vel, self.acc, '', '', '', True)
                     print("移动到维修位置： %s" % self.serv_pos)
+                #喷涂上位置
+                elif key_input.top:
+                    if self.paint_top is not None:
+                        self.duco_cobot.servoj_pose(self.paint_top, self.vel, self.acc, '', '', '', True)
+                        print("移动到喷涂上位置： %s" % self.paint_top)
+                    else:
+                        print("无位置坐标！请先执行自动寻找程序")
+                #喷涂中位置
+                elif key_input.center:
+                    if self.paint_center is not None:
+                        self.duco_cobot.servoj_pose(self.paint_center, self.vel, self.acc, '', '', '', True)
+                        print("移动到喷涂中位置： %s" % self.paint_center)
+                    else:
+                        print("无位置坐标！请先执行自动寻找程序")
+                #喷涂下位置
+                elif key_input.bottom:
+                    if self.paint_bottom is not None:
+                        self.duco_cobot.servoj_pose(self.paint_bottom, self.vel, self.acc, '', '', '', True)
+                        print("移动到喷涂下位置： %s" % self.paint_bottom)
+                    else:
+                        print("无位置坐标！请先执行自动寻找程序")
                 #机械臂末端转  pitch上
                 elif key_input.rx0: 
                     self.duco_cobot.speedl([0, 0, 0, 0, 0, v5], self.acc, -1, False)
