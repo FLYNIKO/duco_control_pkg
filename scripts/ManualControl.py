@@ -155,6 +155,9 @@ class system_control:
     # 第一个元素为按钮
     def get_key_input(self):
         if time.time() - self.last_key_time > KEYTIMEOUT:
+            self.emergency_stop_flag = True
+            self.autopaint_flag = False
+            self.duco_stop.stop(True)
             key_bits = 0
             self.anticrash_up = ANTICRASH_UP
             self.anticrash_front = ANTICRASH_FRONT
@@ -163,6 +166,7 @@ class system_control:
             self.scan_range = SCAN_RANGE
             self.min_jump_threshold = SCAN_JUMP
             self.scan_adjust = SCAN_ADJUST
+            print("与控制端连接丢失，执行急停，阈值使用默认值！")
         else:
             key_bits = self.latest_keys[0]
             if len(self.latest_keys) > 1 and all(self.latest_keys[i] >= 0 for i in [1, 2, 3, 4, 5, 6]):
