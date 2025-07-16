@@ -119,7 +119,7 @@ class system_control:
             self.emergency_stop_flag = False
             key_input = self.get_key_input()
             state = self.duco_stop.get_robot_state()
-            if key_input.multi:
+            if key_input.multi or self.emergency_stop_flag:
                 print("检测到紧急停止按键，正在执行紧急停止！")
                 self.emergency_stop_flag = True
                 self.autopaint_flag = False
@@ -156,8 +156,6 @@ class system_control:
     def get_key_input(self):
         if time.time() - self.last_key_time > KEYTIMEOUT:
             self.emergency_stop_flag = True
-            self.autopaint_flag = False
-            self.duco_stop.stop(True)
             key_bits = 0
             self.anticrash_up = ANTICRASH_UP
             self.anticrash_front = ANTICRASH_FRONT
