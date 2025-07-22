@@ -69,6 +69,7 @@ class system_control:
         self.autopaint_flag = False
         self.clog_flag = False
         self.clog_auto = False
+        self.anti_crash_flag = False
         self.init_pos = INIT_POS # 初始位置
         self.serv_pos = SERV_POS # 维修位置
         self.safe_pos = SAFE_POS # 安全位置
@@ -78,10 +79,10 @@ class system_control:
         self.front_sensor_history = deque(maxlen=5) # 滤波队列
 
         self.paint_center = [] # 喷涂中心点
-        self.paint_top = []
-        self.paint_bottom = []
-        self.paint_high = []
-        self.paint_low = []
+        self.paint_top = [] # 喷涂顶部
+        self.paint_bottom = [] # 喷涂底部
+        self.paint_high = [] # 喷涂上姿态
+        self.paint_low = [] # 喷涂下姿态
         self.paint_beam_height = 0.0 # 喷涂垂直方向高度，单位：mm
         self.paint_fender_width = 0.0 # 喷涂翼子板宽度，单位：mm
         self.scan_range = SCAN_RANGE  # 扫描总行程，单位：m
@@ -170,8 +171,14 @@ class system_control:
             if len(self.latest_keys) > 1 and all(self.latest_keys[i] >= 0 for i in [1, 2, 3, 4, 5, 6]):
                 self.anticrash_up = self.latest_keys[1]
                 self.anticrash_front = self.latest_keys[2]
-                self.anticrash_left = self.latest_keys[3]
-                self.anticrash_right = self.latest_keys[4]
+                if self.latest_keys[3] < 300:
+                    self.anticrash_left = 300
+                else:
+                    self.anticrash_left = self.latest_keys[3]
+                if self.latest_keys[4] < 300:
+                    self.anticrash_right = 300
+                else:
+                    self.anticrash_right = self.latest_keys[4]
                 self.scan_range = self.latest_keys[5] / 1000
                 self.min_jump_threshold = self.latest_keys[6]
             else:
@@ -244,6 +251,7 @@ class system_control:
     # 自动寻找钢梁中心位置
     def find_central_pos(self):
         print("------开始寻找钢梁中心位置------")
+        center_pos = []
         sensor_data = self.get_sensor_data()
 
         if sensor_data["front"] == -1:
@@ -314,9 +322,34 @@ class system_control:
 
             # 补偿喷嘴与传感器之间的偏移,单位：m
             center_pos[2] += self.scan_adjust
+            sensor_data = self.get_sensor_data()
+            dist = sensor_data["front"]
+            center_pos[0] += (dist - 520)/1000
+
             self.paint_center = center_pos
             self.duco_cobot.servoj_pose(center_pos, self.vel, self.acc, '', '', '', True)
             print(f"机械臂喷嘴已移动到中心位置：{center_pos}")
+            
+
+            center_pos[0] += 0.34
+            center_pos[2] += 0.76
+            self.paint_top = center_pos # 喷涂顶部
+
+            center_pos = self.paint_center
+            center_pos[0] += 0.21
+            center_pos[2] += 0.17
+            self.paint_high = center_pos # 喷涂下翼板
+
+            center_pos = self.paint_center
+            center_pos[0] += 0.21
+            center_pos[2] -= 0.30
+            self.paint_low = center_pos # 喷涂上翼板
+
+            center_pos = self.paint_center
+            center_pos[0] += 0.34
+            center_pos[2] -= 0.78
+            self.paint_bottom = center_pos # 喷涂底部
+
 
         else:
             print("未能检测到两个明显边缘，可能钢梁异常或测距异常。")
@@ -333,6 +366,7 @@ class system_control:
         last_time = cur_time
 
         while self.autopaint_flag:
+            self.anti_crash_flag = False
             sensor_data = self.get_sensor_data()
             tcp_pos = self.duco_cobot.get_tcp_pose()
             key_input = self.get_key_input()
@@ -351,9 +385,10 @@ class system_control:
                 continue
 
             side_count = 0
-            side_count_threshold = 7 
+            side_count_threshold = 10
             while self.anticrash_left != 0 and sensor_data["left"] < self.anticrash_left and not self.clog_flag:
-                v2 = self.auto_vel * 2
+                self.anti_crash_flag = True
+                v2 = self.auto_vel * 3
                 self.duco_cobot.speedl([0, 0, -v2, 0, 0, 0], self.acc, -1, False)
                 time.sleep(0.1)
                 sensor_data = self.get_sensor_data()
@@ -369,8 +404,13 @@ class system_control:
                         sensor_data = self.get_sensor_data()
                         time.sleep(0.05)
                     # 通过梁后，回到下降前的最后位置
-                    self.duco_cobot.servoj_pose(default_pos, self.vel, self.acc, '', '', '', True)
+                    self.duco_cobot.servoj_pose(default_pos, self.vel * 2, self.acc, '', '', '', True)
                     break
+            if self.anti_crash_flag:
+                tcp_pos = self.duco_cobot.get_tcp_pose()
+                tcp_pos[0] -= 0.2
+                self.duco_cobot.servoj_pose(tcp_pos, self.vel, self.acc, '', '', '', True)
+                self.anti_crash_flag = False
             
             # PID with filter
             v2 = 0.0  # x轴默认速度为0
