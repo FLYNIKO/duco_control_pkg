@@ -322,34 +322,23 @@ class system_control:
 
             # 补偿喷嘴与传感器之间的偏移,单位：m
             center_pos[2] += self.scan_adjust
+            # 移动到目标位置
+            self.duco_cobot.servoj_pose(center_pos, self.vel, self.acc, '', '', '', True)
+            # 计算当前喷涂距离，并移动到目标喷涂距离
             sensor_data = self.get_sensor_data()
             dist = sensor_data["front"]
-            center_pos[0] += (dist - 520)/1000
-
-            self.paint_center = center_pos
+            center_pos[0] += (dist - self.anticrash_front)/1000
             self.duco_cobot.servoj_pose(center_pos, self.vel, self.acc, '', '', '', True)
+            self.paint_center = center_pos
             print(f"机械臂喷嘴已移动到中心位置：{center_pos}")
             
+            self.paint_top = [center_pos[0] - 0.34, center_pos[1], center_pos[2] + 0.76, center_pos[3], center_pos[4], center_pos[5]] # 喷涂顶部
 
-            center_pos[0] += 0.34
-            center_pos[2] += 0.76
-            self.paint_top = center_pos # 喷涂顶部
+            self.paint_high = [center_pos[0] - 0.21, center_pos[1], center_pos[2] + 0.17, center_pos[3], center_pos[4], center_pos[5]] # 喷涂下翼板
 
-            center_pos = self.paint_center
-            center_pos[0] += 0.21
-            center_pos[2] += 0.17
-            self.paint_high = center_pos # 喷涂下翼板
+            self.paint_low = [center_pos[0] - 0.21, center_pos[1], center_pos[2] - 0.30, center_pos[3], center_pos[4], center_pos[5]] # 喷涂上翼板
 
-            center_pos = self.paint_center
-            center_pos[0] += 0.21
-            center_pos[2] -= 0.30
-            self.paint_low = center_pos # 喷涂上翼板
-
-            center_pos = self.paint_center
-            center_pos[0] += 0.34
-            center_pos[2] -= 0.78
-            self.paint_bottom = center_pos # 喷涂底部
-
+            self.paint_bottom = [center_pos[0] - 0.34, center_pos[1], center_pos[2] - 0.78, center_pos[3], center_pos[4], center_pos[5]] # 喷涂底部
 
         else:
             print("未能检测到两个明显边缘，可能钢梁异常或测距异常。")
@@ -488,6 +477,16 @@ class system_control:
                 self.duco_cobot.speed_stop(True)
                 print("Timeout.")
                 break
+
+    def pos_move(self, aim_pos):
+        if aim_pos is not None:
+            tcp_pos = self.duco_cobot.get_tcp_pose()
+            self.duco_cobot.servoj_pose([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.vel, self.acc, '', '', '', True)
+            self.duco_cobot.servoj_pose([tcp_pos[0] + 0.2, tcp_pos[1], aim_pos[2], tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.vel, self.acc, '', '', '', True)
+            self.duco_cobot.servoj_pose(aim_pos, self.vel, self.acc, '', '', '', True)
+            print("移动到目标位置： %s" % aim_pos)
+        else:
+            print("无位置坐标！请先执行自动寻找程序")
 
     def run(self):
         print("等待移动到初始位置...")

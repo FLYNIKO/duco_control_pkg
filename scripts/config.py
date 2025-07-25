@@ -1,14 +1,14 @@
 
 
-IP = '192.168.100.10' # 虚拟机IP地址
-# IP = '192.168.0.168' # 机械臂IP地址
+# IP = '192.168.100.10' # 虚拟机IP地址
+IP = '192.168.0.168' # 机械臂IP地址
 PORT = 7003 # 机械臂端口号
 
 """传感器防撞阈值（mm），若阈值为0则不开启防撞"""
 ANTICRASH_UP = 0 # --上
 ANTICRASH_FRONT = 600 # 同时用作喷涂距离--上
-ANTICRASH_LEFT = 0 # --上
-ANTICRASH_RIGHT = 0 # --上
+ANTICRASH_LEFT = 300 # --上
+ANTICRASH_RIGHT = 300 # --上
 
 AUTOSPEED = 0.2 # 自动喷涂速度
 DEFAULT_VEL = 0.2 # 机械臂末端速度
