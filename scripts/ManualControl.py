@@ -3,8 +3,8 @@ import rospy
 import threading
 
 from DucoCobot import DucoCobot
-from s21c_receive_data.msg import STP23
 from key_input_pkg.msg import KeyInput
+from duco_control_pkg.msg import LineDetectArray, LineInfo, ObstacleFlags
 from CylinderPaint_duco import CylinderAutoPaint
 from collections import deque
 from config import *
@@ -61,15 +61,18 @@ class system_control:
         self.duco_cobot = duco_cobot
         self.app = app
         self.auto_vel = AUTOSPEED # 自动喷涂速度
-        self.vel = DEFAULT_VEL # 机械臂末端速度
+        self.vel = DEFAULT_VEL # 机械臂手动末端速度
         self.acc = DEFAULT_ACC # 机械臂末端加速度
         self.aj_pos = [] # 当前关节角度
         self.tcp_pos = [] # 当前末端位姿
+        self.paint_adjust = PAINT_ADJUST # 4个喷涂位置调整参数
         self.sysrun = True
         self.autopaint_flag = False
         self.clog_flag = False
         self.clog_auto = False
         self.anti_crash_flag = False
+        self.mode_status = 0 # 模式状态，0-被动，1-手动，2-自动
+        self.paint_motion = 0 # 喷涂位置点，0-其他位置，1-喷涂顶部，2-喷涂下翼板，3-喷涂中腹板，4-喷涂上翼板，5-喷涂底部
         self.init_pos = INIT_POS # 初始位置
         self.serv_pos = SERV_POS # 维修位置
         self.safe_pos = SAFE_POS # 安全位置
@@ -78,38 +81,64 @@ class system_control:
         self.pid_z = SimplePID(kp=KP, ki=KI, kd=KD)
         self.front_sensor_history = deque(maxlen=5) # 滤波队列
 
+        self.mid_z_adj = 0.0
+        self.mid_x_adj = 0.0
         self.paint_center = [] # 喷涂中心点
         self.paint_top = [] # 喷涂顶部
         self.paint_bottom = [] # 喷涂底部
         self.paint_high = [] # 喷涂上姿态
         self.paint_low = [] # 喷涂下姿态
-        self.paint_beam_height = 0.0 # 喷涂垂直方向高度，单位：mm
-        self.paint_fender_width = 0.0 # 喷涂翼子板宽度，单位：mm
-        self.scan_range = SCAN_RANGE  # 扫描总行程，单位：m
-        self.step_size = SCAN_STEP  # 每次移动的步长，单位：m
-        self.pause_time = SCAN_PAUSE  # 每次读取后的停顿时间
-        self.min_jump_threshold = SCAN_JUMP  # 突变阈值，单位：mm
-        self.scan_adjust = SCAN_ADJUST  # 扫描校准，单位：m
 
-        self.anticrash_up = ANTICRASH_UP
-        self.anticrash_front = ANTICRASH_FRONT
-        self.anticrash_left = ANTICRASH_LEFT
-        self.anticrash_right = ANTICRASH_RIGHT
+        self.painting_deg = 0 # 喷涂角度
+        self.painting_dist = 0 # 喷涂距离
+        self.web_height = 0 # 钢梁高度
+        self.flange_up_width = 0 # 上翼子板宽度
+        self.flange_down_width = 0 # 下翼子板宽度
 
         self.theta_deg = PAINTDEG / 2  # 喷涂角度的一半
         self.distance_to_cylinder = self.anticrash_front  # 末端与圆柱表面距离
         self.painting_width = PAINTWIDTH  # 喷涂宽度
 
-        self.latest_sensor_data = {"up": -1, "front": -1, "left_side": -1, "right_side": -1}
-        self.sensor_subscriber = rospy.Subscriber('/STP23', STP23, self._sensor_callback)
+        # 目标线检测相关变量
+        self.surface_distance = 0.0
+        self.surface_angle_deg = 0.0
+
+        # 障碍物检测相关变量
+        self.left_front_obstacle = False
+        self.left_rear_obstacle = False
+        self.right_front_obstacle = False
+        self.right_rear_obstacle = False
+        self.center_obstacle = False
+        self.up_obstacle = False
+        self.down_obstacle = False
+        self.obstacle_stamp = None
+        self.safe_distance = 0.0
+        
+        # 障碍物检测过滤队列（连续3帧检测到才认为是真的障碍物）
+        self.obstacle_filter_frames = 3  # 需要连续检测到的帧数
+        self.left_front_history = deque(maxlen=self.obstacle_filter_frames)
+        self.left_rear_history = deque(maxlen=self.obstacle_filter_frames)
+        self.right_front_history = deque(maxlen=self.obstacle_filter_frames)
+        self.right_rear_history = deque(maxlen=self.obstacle_filter_frames)
+        self.center_history = deque(maxlen=self.obstacle_filter_frames)
+        self.up_history = deque(maxlen=self.obstacle_filter_frames)
+        self.down_history = deque(maxlen=self.obstacle_filter_frames)
+
         self.latest_keys = [0] * 20
         self.last_key_time = time.time()
-        self.last_sensor_time = time.time()
+        self.last_line_time = time.time()
+        self.last_H_time = time.time()
+        self.last_ob_time = time.time()
         self.keys_subscriber = rospy.Subscriber('/key_input', KeyInput, self._keys_callback)
+        self.H_info_subscriber = rospy.Subscriber('/left_radar/H_detection_info', LineDetectionArray, self._H_info_callback)
+        self.line_detection_subscriber = rospy.Subscriber('/twin_radar/line_detection_info', LineDetectionArray, self._line_detection_callback)
+        self.obstacle_flags_subscriber = rospy.Subscriber('/obstacle_flags', ObstacleFlags, self._obstacle_flags_callback)
 
         self.emergency_stop_flag = False
         self.emergency_thread = threading.Thread(target=self.emergency_stop_thread, daemon=True)
         self.emergency_thread.start()
+        self.ob_thread = threading.Thread(target=self.ob_thread, daemon=True)
+        self.ob_thread.start()
     
     # 急停线程
     def emergency_stop_thread(self):
@@ -142,13 +171,160 @@ class system_control:
                     self.duco_stop.switch_mode(1)          
             self._stop_event.wait(0.05)
 
+    def ob_thread(self):
+        self._stop_event = threading.Event()
+        self.duco_ob = DucoCobot(self.ip, PORT)
+        self.duco_ob.open()
+        while self.sysrun and not rospy.is_shutdown():
+            ob_data = self.get_obstacle_status()
+            if self.mode_status == 0: # 被动避障逻辑
+                if ob_data['left_front'] or ob_data['right_front']:
+                    self.duco_ob.
+
+
+            elif self.mode_status == 2: # 自动避障逻辑
+            if ob_data['left_front'] or ob_data['left_rear'] or ob_data['right_front'] or ob_data['right_rear'] or ob_data['center'] or ob_data['up'] or ob_data['down']:
+                self.duco_ob.speed_stop(True)
+                self.duco_ob.stop(True)
+                self.duco_ob.disable(True)
+                self.sysrun = False
+                print("检测到障碍物，停止喷涂！")
+            self._stop_event.wait(0.05)
+
     def get_cylinder_param(self):
         # TODO: 获取圆柱圆心坐标及圆柱半径
         cx, cy, cz = 1.8, 0.3, 1.2   # 圆心坐标
         cy_radius = 0.5               # 圆柱半径
         return cx, cy, cz, cy_radius
     
-    # 读取/topic中的按键输入
+    def _H_info_callback(self, msg):
+        self.H_info = msg
+        self.last_H_time = time.time()
+        web_line = None
+        up_line = None
+        down_line = None
+        if len(msg.lines) == 3:
+            for line in msg.lines:
+                if line.type == 0:
+                    web_line = line
+                elif line.type == 1:
+                    if line.start_point.z > 0:
+                        up_line = line
+                    elif line.start_point.z < 0:
+                        down_line = line
+            if web_line is not None:
+                if web_line.start_point.z > web_line.end_point.z:
+                    self.mid_z_adj = web_line.start_point.z - web_line.length / 2
+                else:
+                    self.mid_z_adj = web_line.end_point.z - web_line.length / 2
+                self.mid_x_adj = self.painting_dist - web_line.distance 
+                self.web_height = web_line.length
+            if up_line is not None:
+                self.flange_up_width = up_line.length
+            if down_line is not None:
+                self.flange_down_width = down_line.length
+
+    def _line_detection_callback(self, msg):
+        # 处理 /twin_radar/line_detection_info 消息
+        # 只保留 id=999 的 line 信息，并提取 distance 和 angle_deg
+        self.line_detection = msg
+        self.last_line_time = time.time()
+        
+        # 查找 id=999 的 line
+        target_line = None
+        for line in msg.lines:
+            if line.id == 999:
+                target_line = line
+                break
+        
+        if target_line is not None:
+            # 提取 distance 和 angle_deg
+            self.surface_distance = target_line.distance
+            self.surface_angle_deg = target_line.angle_deg
+            rospy.loginfo(f"找到目标线 (id=999): distance={self.target_distance:.3f}, angle_deg={self.target_angle_deg:.3f}")
+        else:
+            # 如果没有找到 id=999 的线，可以设置默认值或保持之前的值
+            rospy.logwarn("未找到 id=999 的目标线")
+            # 可以选择设置默认值或保持之前的值不变
+
+    def _obstacle_flags_callback(self, msg):
+        self.obstacle_flags = msg
+        self.last_ob_time = time.time()
+        
+        # 处理障碍物标志信息
+        # 将当前帧的状态添加到历史队列中
+        self.left_front_history.append(msg.left_front)
+        self.left_rear_history.append(msg.left_rear)
+        self.right_front_history.append(msg.right_front)
+        self.right_rear_history.append(msg.right_rear)
+        self.center_history.append(msg.center)
+        self.up_history.append(msg.up)
+        self.down_history.append(msg.down)
+        
+        # 应用过滤逻辑：只有当连续3帧都检测到障碍物时才设置为true
+        self.left_front_obstacle = self._check_continuous_detection(self.left_front_history)
+        self.left_rear_obstacle = self._check_continuous_detection(self.left_rear_history)
+        self.right_front_obstacle = self._check_continuous_detection(self.right_front_history)
+        self.right_rear_obstacle = self._check_continuous_detection(self.right_rear_history)
+        self.center_obstacle = self._check_continuous_detection(self.center_history)
+        self.up_obstacle = self._check_continuous_detection(self.up_history)
+        self.down_obstacle = self._check_continuous_detection(self.down_history)
+        
+        # 读取时间戳和安全距离
+        self.obstacle_stamp = msg.stamp
+        self.safe_distance = msg.safe_distance
+        
+    
+    def _check_continuous_detection(self, history_queue):
+        """
+        检查历史队列中是否连续检测到障碍物
+        参数:
+            history_queue: 包含最近几帧检测结果的队列
+        返回:
+            bool: 如果连续3帧都检测到则返回True，否则返回False
+        """
+        # 如果队列还没有填满，返回False
+        if len(history_queue) < self.obstacle_filter_frames:
+            return False
+        
+        # 检查最近3帧是否都为True
+        return all(history_queue)
+    
+    def get_obstacle_status(self):
+        """
+        获取过滤后的障碍物状态信息
+        返回: 包含所有障碍物状态的字典
+        """
+        return {
+            'left_front': self.left_front_obstacle,
+            'left_rear': self.left_rear_obstacle,
+            'right_front': self.right_front_obstacle,
+            'right_rear': self.right_rear_obstacle,
+            'center': self.center_obstacle,
+            'up': self.up_obstacle,
+            'down': self.down_obstacle,
+            'stamp': self.obstacle_stamp,
+            'safe_distance': self.safe_distance
+        }
+    
+    def get_raw_obstacle_status(self):
+        """
+        获取原始（未过滤）的障碍物状态信息
+        返回: 包含所有原始障碍物状态的字典
+        """
+        return {
+            'left_front': self.left_front_history[-1] if self.left_front_history else False,
+            'left_rear': self.left_rear_history[-1] if self.left_rear_history else False,
+            'right_front': self.right_front_history[-1] if self.right_front_history else False,
+            'right_rear': self.right_rear_history[-1] if self.right_rear_history else False,
+            'center': self.center_history[-1] if self.center_history else False,
+            'up': self.up_history[-1] if self.up_history else False,
+            'down': self.down_history[-1] if self.down_history else False,
+            'stamp': self.obstacle_stamp,
+            'safe_distance': self.safe_distance
+        }
+        
+        # 读取/topic中的按键输入
     def _keys_callback(self, msg):
         self.latest_keys = list(msg.keys)
         self.last_key_time = time.time()
@@ -158,34 +334,12 @@ class system_control:
         if time.time() - self.last_key_time > KEYTIMEOUT:
             self.emergency_stop_flag = True
             key_bits = 0
-            self.anticrash_up = ANTICRASH_UP
-            self.anticrash_front = ANTICRASH_FRONT
-            self.anticrash_left = ANTICRASH_LEFT
-            self.anticrash_right = ANTICRASH_RIGHT
-            self.scan_range = SCAN_RANGE
-            self.min_jump_threshold = SCAN_JUMP
-            self.scan_adjust = SCAN_ADJUST
             print("与控制端连接丢失，执行急停，阈值使用默认值！")
         else:
             key_bits = self.latest_keys[0]
-            if len(self.latest_keys) > 1 and all(self.latest_keys[i] >= 0 for i in [1, 2, 3, 4, 5, 6]):
-                self.anticrash_up = self.latest_keys[1]
-                self.anticrash_front = self.latest_keys[2]
-                if self.latest_keys[3] < 300:
-                    self.anticrash_left = 300
-                else:
-                    self.anticrash_left = self.latest_keys[3]
-                if self.latest_keys[4] < 300:
-                    self.anticrash_right = 300
-                else:
-                    self.anticrash_right = self.latest_keys[4]
-                self.scan_range = self.latest_keys[5] / 1000
-                self.min_jump_threshold = self.latest_keys[6]
-            else:
-                self.anticrash_up = ANTICRASH_UP
-                self.anticrash_front = ANTICRASH_FRONT
-                self.anticrash_left = ANTICRASH_LEFT
-                self.anticrash_right = ANTICRASH_RIGHT
+            self.painting_deg = self.latest_keys[7]
+            self.painting_dist = self.latest_keys[8]
+
         # 按位解析
         return KeyInputStruct(
             x0      = (key_bits >> 0) & 1,
@@ -213,27 +367,10 @@ class system_control:
             bottom = (key_bits >> 22) & 1,
             # TODO: 添加更多按键位的解析_max=31
         )
-    # 第二个及以后的元素为数据
-    def get_ctrl_msg(self):
-        return self.latest_keys[1:]
-    
-    # 读取/topic中的传感器数据
-    def _sensor_callback(self, msg):
-        self.latest_sensor_data = {
-            "up": msg.Distance_1,
-            "front": msg.Distance_2,
-            "left": msg.Distance_3,
-            "right": msg.Distance_4
-        }
-        self.last_sensor_time = time.time()
 
-    def get_sensor_data(self):
-        if time.time() - self.last_sensor_time > SENSORTIMEOUT:
-            self.latest_sensor_data = {"up": -1, "front": -1, "left_side": -1, "right_side": -1}
-        return self.latest_sensor_data
-    
     # 堵枪清理动作
     def clog_function(self):
+        # TODO: 堵枪清理功能
         if not self.clog_flag:      # 发生堵枪时第一次按下，转到清理位置，执行清理工作
             self.clog_flag = True
             self.tcp_pos = self.duco_cobot.get_tcp_pose()
@@ -250,6 +387,7 @@ class system_control:
 
     # 自动寻找钢梁中心位置
     def find_central_pos(self):
+        # TODO: 自动寻找钢梁中心位置
         print("------开始寻找钢梁中心位置------")
         center_pos = []
         sensor_data = self.get_sensor_data()
@@ -302,7 +440,7 @@ class system_control:
         if len(edge_positions) >= 4:
             top_diff = abs(edge_positions[0][1] - edge_positions[1][1])
             bottom_diff = abs(edge_positions[-1][1] - edge_positions[-2][1])
-            if abs(top_diff - bottom_diff) < 15:
+            if abs(top_diff - bottom_diff) < 30:
                 self.paint_fender_width = abs(edge_positions[0][1] - edge_positions[1][1])
             else :
                 self.paint_fender_width = -1 # 无法计算翼子板宽度
@@ -332,17 +470,12 @@ class system_control:
             self.paint_center = center_pos
             print(f"机械臂喷嘴已移动到中心位置：{center_pos}")
             
-            self.paint_top = [center_pos[0] - 0.34, center_pos[1], center_pos[2] + 0.76, center_pos[3], center_pos[4], center_pos[5]] # 喷涂顶部
-
-            self.paint_high = [center_pos[0] - 0.21, center_pos[1], center_pos[2] + 0.17, center_pos[3], center_pos[4], center_pos[5]] # 喷涂下翼板
-
-            self.paint_low = [center_pos[0] - 0.21, center_pos[1], center_pos[2] - 0.30, center_pos[3], center_pos[4], center_pos[5]] # 喷涂上翼板
-
-            self.paint_bottom = [center_pos[0] - 0.34, center_pos[1], center_pos[2] - 0.78, center_pos[3], center_pos[4], center_pos[5]] # 喷涂底部
-
+            self.paint_top = [center_pos[0] + self.paint_adjust[0], center_pos[1], center_pos[2] + self.paint_adjust[1], center_pos[3], center_pos[4], center_pos[5]] # 喷涂顶部
+            self.paint_high = [center_pos[0] + self.paint_adjust[2], center_pos[1], center_pos[2] + self.paint_adjust[3], center_pos[3], center_pos[4], center_pos[5]] # 喷涂下翼板
+            self.paint_low = [center_pos[0] + self.paint_adjust[4], center_pos[1], center_pos[2] + self.paint_adjust[5], center_pos[3], center_pos[4], center_pos[5]] # 喷涂上翼板
+            self.paint_bottom = [center_pos[0] + self.paint_adjust[6], center_pos[1], center_pos[2] + self.paint_adjust[7], center_pos[3], center_pos[4], center_pos[5]] # 喷涂底部
         else:
             print("未能检测到两个明显边缘，可能钢梁异常或测距异常。")
-
 
     # 自动喷涂，边走边喷
     def auto_paint_sync(self):
@@ -484,9 +617,35 @@ class system_control:
             self.duco_cobot.servoj_pose([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.vel, self.acc, '', '', '', True)
             self.duco_cobot.servoj_pose([tcp_pos[0] + 0.2, tcp_pos[1], aim_pos[2], tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.vel, self.acc, '', '', '', True)
             self.duco_cobot.servoj_pose(aim_pos, self.vel, self.acc, '', '', '', True)
-            print("移动到目标位置： %s" % aim_pos)
+            if aim_pos == self.paint_top:
+                self.paint_motion = 1
+                print("移动到喷涂顶部位置： %s" % aim_pos)
+            elif aim_pos == self.paint_high:
+                self.paint_motion = 2
+                print("移动到喷涂下翼板位置： %s" % aim_pos)
+            elif aim_pos == self.paint_center:
+                self.paint_motion = 3
+                print("移动到喷涂中腹板位置： %s" % aim_pos)
+            elif aim_pos == self.paint_low:
+                self.paint_motion = 4
+                print("移动到喷涂上翼板位置： %s" % aim_pos)
+            elif aim_pos == self.paint_bottom:
+                self.paint_motion = 5
+                print("移动到喷涂底部位置： %s" % aim_pos)
+            else:
+                self.paint_motion = 0
+                print("移动到目标位置： %s" % aim_pos)
         else:
-            print("无位置坐标！请先执行自动寻找程序")
+            print("无效位置坐标！请先执行自动寻找程序")
+
+    def paint_pos_adjust(self):
+        if self.paint_center is not None:
+            if self.paint_motion == 1:
+                tcp_pos = self.duco_cobot.get_tcp_pose()
+                self.paint_adjust[0] = tcp_pos[0] - self.paint_top[0]
+                self.paint_adjust[1] = tcp_pos[2] - self.paint_top[2]
+        else:
+            print("请先执行自动寻找程序")
 
     def run(self):
         print("等待移动到初始位置...")
@@ -541,47 +700,29 @@ class system_control:
                     self.duco_cobot.speedl([0, -v1, 0, 0, 0, 0],self.acc ,-1, False)
                 #初始化位置
                 elif key_input.init:
+                    self.paint_motion = 0
                     self.duco_cobot.servoj_pose(self.init_pos, self.vel, self.acc, '', '', '', True)
                     print("移动到初始位置： %s" % self.init_pos)
                 #维修位置
                 elif key_input.serv:
+                    self.paint_motion = 0
                     self.duco_cobot.servoj_pose(self.serv_pos, self.vel, self.acc, '', '', '', True)
                     print("移动到维修位置： %s" % self.serv_pos)
-                #喷涂上位置
-                elif key_input.high:
-                    if self.paint_high is not None:
-                        self.duco_cobot.servoj_pose(self.paint_high, self.vel, self.acc, '', '', '', True)
-                        print("移动到喷涂上位置： %s" % self.paint_high)
-                    else:
-                        print("无位置坐标！请先执行自动寻找程序")
-                #喷涂中位置
-                elif key_input.center:
-                    if self.paint_center is not None:
-                        self.duco_cobot.servoj_pose(self.paint_center, self.vel, self.acc, '', '', '', True)
-                        print("移动到喷涂中位置： %s" % self.paint_center)
-                    else:
-                        print("无位置坐标！请先执行自动寻找程序")
-                #喷涂下位置
-                elif key_input.low:
-                    if self.paint_low is not None:
-                        self.duco_cobot.servoj_pose(self.paint_low, self.vel, self.acc, '', '', '', True)
-                        print("移动到喷涂下位置： %s" % self.paint_low)
-                    else:
-                        print("无位置坐标！请先执行自动寻找程序")
                 #喷涂顶部
                 elif key_input.top:
-                    if self.paint_top is not None:
-                        self.duco_cobot.servoj_pose(self.paint_top, self.vel, self.acc, '', '', '', True)
-                        print("移动到喷涂顶部： %s" % self.paint_top)
-                    else:
-                        print("无位置坐标！请先执行自动寻找程序")
+                    self.pos_move(self.paint_top)
+                #喷涂下翼板
+                elif key_input.high:
+                    self.pos_move(self.paint_high)
+                #喷涂中腹板
+                elif key_input.center:
+                    self.pos_move(self.paint_center)
+                #喷涂上翼板
+                elif key_input.low:
+                    self.pos_move(self.paint_low)
                 #喷涂底部
                 elif key_input.bottom:
-                    if self.paint_bottom is not None:
-                        self.duco_cobot.servoj_pose(self.paint_bottom, self.vel, self.acc, '', '', '', True)
-                        print("移动到喷涂底部： %s" % self.paint_bottom)
-                    else:
-                        print("无位置坐标！请先执行自动寻找程序")
+                    self.pos_move(self.paint_bottom)
                 #机械臂末端转  pitch上
                 elif key_input.rx0: 
                     self.duco_cobot.speedl([0, 0, 0, 0, 0, v5], self.acc, -1, False)

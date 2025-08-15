@@ -6,5 +6,6 @@
     "python.analysis.extraPaths": [
         "/home/szhai/msgs_ws/devel/lib/python2.7/dist-packages",
         "/opt/ros/melodic/lib/python2.7/dist-packages"
-    ]
+    ],
+    "cmake.sourceDirectory": "/wsl.localhost/Ubuntu-20.04/home/niko/msgs_ws/src/duco_control_pkg"
 }
