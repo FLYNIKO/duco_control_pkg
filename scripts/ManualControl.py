@@ -81,7 +81,7 @@ class system_control:
         self.clog_pos = CLOG_POS # 堵枪位置
         self.pid = SimplePID(kp=1, ki=0.0, kd=0.2)
         self.pid_z = SimplePID(kp=KP, ki=KI, kd=KD)
-        self.front_sensor_history = deque(maxlen=5) # 滤波队列
+        self.dist_history = deque(maxlen=5) # 滤波队列
 
         self.center_z = 0.0
         self.center_x = 0.0
@@ -94,7 +94,6 @@ class system_control:
         self.paint_high = [] # 喷涂上姿态
         self.paint_low = [] # 喷涂下姿态
 
-        self.painting_deg = 0 # 喷涂角度
         self.painting_dist = 0 # 喷涂距离
         self.web_height = 0 # 钢梁高度
         self.flange_up_width = 0 # 上翼子板宽度
@@ -105,6 +104,9 @@ class system_control:
         self.painting_width = PAINTWIDTH  # 喷涂宽度
 
         # 目标线检测相关变量
+        self.target_dist_in_surface = 0.0
+        self.target_dist_in_flange = 0.0
+        self.target_dist_in_web = self.painting_dist
         self.surface_distance = 0.0
         self.surface_angle_deg = 0.0
 
@@ -157,6 +159,7 @@ class system_control:
             state = self.duco_stop.get_robot_state()
             if key_input.multi or self.emergency_stop_flag:
                 rospy.logwarn("检测到紧急停止按键，正在执行紧急停止！")
+                self.ob_status = 1
                 self.emergency_stop_flag = True
                 self.autopaint_flag = False
                 self.find_mode = False
@@ -244,9 +247,9 @@ class system_control:
                             elif ob_data['left_front'] or ob_data['right_front'] or ob_data['center']:
                                 self.duco_ob.servoj_pose([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
                             elif ob_data['up']:
-                                self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] - 0.1, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
+                                self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] - 0.15, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
                             elif ob_data['down']:
-                                self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] + 0.1, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
+                                self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] + 0.15, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
 
                         elif self.paint_motion == 2 or self.paint_motion == 4:
                             if (ob_data['left_front'] and ob_data['left_rear']) or (ob_data['right_front'] and ob_data['right_rear']):
@@ -254,9 +257,9 @@ class system_control:
                             elif ob_data['left_front'] or ob_data['right_front']:
                                 self.duco_ob.servoj_pose([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
                             elif ob_data['up']:
-                                self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] - 0.1, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
+                                self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] - 0.15, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
                             elif ob_data['down']:
-                                self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] + 0.1, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
+                                self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] + 0.15, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
 
                         elif self.paint_motion == 3:
                             if (ob_data['left_front'] and ob_data['left_rear']) or (ob_data['right_front'] and ob_data['right_rear']):
@@ -264,9 +267,9 @@ class system_control:
                             elif ob_data['left_front'] or ob_data['right_front'] or ob_data['center']:
                                 self.duco_ob.servoj_pose([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
                             elif ob_data['up']:
-                                self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] - 0.1, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
+                                self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] - 0.15, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
                             elif ob_data['down']:
-                                self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] + 0.1, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
+                                self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] + 0.15, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
                 else:
                     self.ob_flag = False
 
@@ -332,6 +335,7 @@ class system_control:
                             down_line = line
 
                 if web_line is not None:
+                    self.target_dist_in_flange = self.painting_dist - abs(abs(self.paint_high[0]) - abs(self.paint_center[0]))
                     self.distance_to_web = abs(web_line.start_point.x - tcp_pos[0])
             else:
                 self.distance_to_web = -1
@@ -353,11 +357,13 @@ class system_control:
             # 提取 distance 和 angle_deg
             self.surface_distance = target_line.distance
             self.surface_angle_deg = target_line.angle_deg
-            rospy.loginfo(f"找到目标线 (id=999): distance={self.target_distance:.3f}, angle_deg={self.target_angle_deg:.3f}")
+            self.target_dist_in_surface = self.painting_dist - abs(abs(self.paint_top[0]) - abs(self.paint_center[0]))
+
+            # rospy.loginfo(f"找到目标线 (id=999): distance={self.target_distance:.3f}, angle_deg={self.target_angle_deg:.3f}")
         else:
-            # 如果没有找到 id=999 的线，可以设置默认值或保持之前的值
-            rospy.logwarn("未找到 id=999 的目标线")
-            # 可以选择设置默认值或保持之前的值不变
+            self.surface_distance = -1
+            # rospy.logwarn("未找到 id=999 的目标线")
+            pass
 
     def _obstacle_flags_callback(self, msg):
         self.obstacle_flags = msg
@@ -501,6 +507,7 @@ class system_control:
         # TODO: 堵枪清理功能
         if not self.clog_flag:      # 发生堵枪时第一次按下，转到清理位置，执行清理工作
             self.clog_flag = True
+            self.ob_status = 1
             self.tcp_pos = self.duco_cobot.get_tcp_pose()
             self.duco_cobot.servoj_pose(self.clog_pos, self.vel * 1.5, self.acc, '', '', '', True)
             rospy.loginfo("已移动到清理堵枪位置: %s" % self.clog_pos)
@@ -588,8 +595,30 @@ class system_control:
                         rospy.logwarn("--------------------------------\n |-| 检测超时，此时无法寻找喷涂位姿！\n--------------------------------")
                         self.find_mode = False
                         return
+                        
+    def pid_dist_control(self, distance, target_dist, dt):
+        v2 = 0.0  # x轴默认速度为0
+        if distance != -1 and not self.clog_flag and not self.ob_flag:
+            # 1. 数据滤波
+            raw_front_dist = distance
+            if raw_front_dist > 0:  # 确保是有效读数
+                self.dist_history.append(raw_front_dist)
 
-    # 自动喷涂，边走边喷
+            if len(self.dist_history) > 0:
+                filtered_front_dist = sum(self.dist_history) / len(self.dist_history)
+
+                # 2. 控制死区
+                deadband_threshold = DEADZONE  # 单位: mm, 可根据实际情况调整
+                error = filtered_front_dist - target_dist
+
+                # 3. PID计算 (仅在死区外)
+                if abs(error) > deadband_threshold:
+                    v2 = self.pid_z.compute(target_dist, filtered_front_dist, dt)
+                    # 限制最大速度
+                    v2 = max(min(v2, 0.15), -0.15)  
+        return v2
+
+    # 自动喷边走边喷
     def auto_paint_sync(self):
         rospy.loginfo("-----进入自动模式-----")
         self.autopaint_flag = True
@@ -597,41 +626,42 @@ class system_control:
         cur_time = time.time()
         last_time = cur_time
 
-        while self.autopaint_flag:
-            tcp_pos = self.duco_cobot.get_tcp_pose()
-            key_input = self.get_key_input()
-            now = time.time()
-            dt = now - last_time
-            last_time = now
+        if self.paint_motion == 0:
+            rospy.loginfo("---当前机械臂不在喷涂位置，请先选择一个喷涂位置再开始自动程序---")
+            return
 
-            if key_input.clog:
-                self.clog_function()
-                continue
+        else:
+            while self.autopaint_flag:
+                if self.clog_flag:
+                    self.ob_status = 1
+                else:
+                    self.ob_status = 2
+                tcp_pos = self.duco_cobot.get_tcp_pose()
+                key_input = self.get_key_input()
+                now = time.time()
+                dt = now - last_time
+                last_time = now
 
-            # PID with filter
-            v2 = 0.0  # x轴默认速度为0
-            if self.distance_to_web != -1 and not self.clog_flag and not self.ob_flag:
-                # 1. 数据滤波
-                raw_front_dist = self.distance_to_web
-                if raw_front_dist > 0:  # 确保是有效读数
-                    self.front_sensor_history.append(raw_front_dist)
+                if key_input.clog:
+                    self.clog_function()
+                    continue
 
-                if len(self.front_sensor_history) > 0:
-                    filtered_front_dist = sum(self.front_sensor_history) / len(self.front_sensor_history)
+                if (self.paint_motion == 2 or self.paint_motion == 4) and (self.last_H_time - time.time() < 1):
+                    target_dist = self.target_dist_in_flange
+                    v2 = self.pid_dist_control(self.distance_to_web, target_dist, dt)
 
-                    # 2. 控制死区
-                    target_dist = self.anticrash_front
-                    deadband_threshold = DEADZONE  # 单位: mm, 可根据实际情况调整
-                    error = filtered_front_dist - target_dist
+                elif (self.paint_motion == 1 or self.paint_motion == 5) and (self.last_line_time - time.time() < 1):
+                    target_dist = self.target_dist_in_surface
+                    v2 = self.pid_dist_control(self.surface_distance, target_dist, dt)
 
-                    # 3. PID计算 (仅在死区外)
-                    if abs(error) > deadband_threshold:
-                        v2 = self.pid_z.compute(target_dist, filtered_front_dist, dt)
-                        # 限制最大速度
-                        v2 = max(min(v2, 0.15), -0.15)  
+                elif self.paint_motion == 3 and (self.last_H_time - time.time() < 1):
+                    target_dist = self.target_dist_in_web
+                    v2 = self.pid_dist_control(self.distance_to_web, target_dist, dt)
+                else:
+                    v2 = 0.0
+                rospy.logdebug("v2: %f" % v2)
+                self.duco_cobot.speedl([0, 0, v2, 0, 0, 0], self.acc * 0.9, -1, False)
 
-            rospy.logdebug("v2: %f" % v2)
-            self.duco_cobot.speedl([0, 0, v2, 0, 0, 0], self.acc * 0.9, -1, False)
         rospy.loginfo("-----退出自动模式-----")
 
     # 自动喷涂，车辆不动机械臂动
@@ -706,7 +736,7 @@ class system_control:
                 elif key_input.clog:
                     if not self.emergency_stop_flag:
                         self.clog_function()
-                #寻找梁头的中间位置
+                #寻找五个位姿
                 elif key_input.find:
                     if not self.emergency_stop_flag:
                         self.find_central_pos()
