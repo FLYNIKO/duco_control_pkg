@@ -504,7 +504,6 @@ class system_control:
 
     # 堵枪清理动作
     def clog_function(self):
-        # TODO: 堵枪清理功能
         if not self.clog_flag:      # 发生堵枪时第一次按下，转到清理位置，执行清理工作
             self.clog_flag = True
             self.ob_status = 1
@@ -710,6 +709,20 @@ class system_control:
         # self.duco_cobot.movej2(self.init_pos, 2*self.vel, self.acc, 0, True)
         self.duco_cobot.servoj_pose(self.init_pos, self.vel, self.acc, '', '', '', True)
         rospy.loginfo("移动到初始位置: %s" % self.init_pos)
+        rospy.loginfo("================================")
+        rospy.loginfo("'/Duco_state'                        话题： 机械臂状态")
+        rospy.loginfo("'/Duco_adjust'                       话题： 机械臂调整")
+        rospy.loginfo("'/left_radar/scan'                   话题： 左雷达数据")
+        rospy.loginfo("'/left_radar/filtered_scan'          话题： 左雷达数据(滤波后)")
+        rospy.loginfo("'/right_radar/scan'                  话题： 右雷达数据")
+        rospy.loginfo("'/right_radar/filtered_scan'         话题： 右雷达数据(滤波后)")
+        rospy.loginfo("'/main_radar/scan'                   话题： 主雷达数据")
+        rospy.loginfo("'/main_radar/filtered_scan'          话题： 主雷达数据(滤波后)")
+        rospy.loginfo("'/obstacle_avoidance/pointcloud'     话题： 避障点云")
+        rospy.loginfo("'/obstacle_flags'                    话题： 避障标志(自定义消息)")
+        rospy.loginfo("'/twin_radar/line_detection_info'    话题： 双线检测信息(自定义消息)")
+        rospy.loginfo("'/left_radar/H_detection_info'       话题： 左雷达H检测信息(自定义消息)")
+        rospy.loginfo("================================")
         
         try:
             while self.sysrun and not rospy.is_shutdown():

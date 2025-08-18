@@ -1,4 +1,4 @@
-'''雷达安装位置参数'''
+'''雷达安装位置参数(相对于机械臂末端)'''
 MAIN_RADAR_OFFSET = [0.43, 0.0, 0.2, 0, 0, 0] # 主雷达偏移
 LEFT_RADAR_OFFSET = [0.4, 0.4, 0.1, 1.57, 0, 0] # 左雷达偏移
 RIGHT_RADAR_OFFSET = [0.4, -0.4, 0.1, 1.57, 0, 0] # 右雷达偏移
@@ -33,3 +33,19 @@ SAFE_POS = [-0.17, -0.18, 0.73, -1.57, 0.0, 1.57] # 安全位置
 
 KEYTIMEOUT = 2 # 键盘输入超时时间(s)
 TIMEOUT = 2 # 传感器超时时间(s)
+
+'''
+'/obstacle_avoidance/pointcloud'话题： 避障点云
+'/Duco_state'话题： 机械臂状态
+
+'/left_radar/scan'话题： 左雷达数据
+'/left_radar/filtered_scan'话题： 左雷达数据(滤波后)
+'/right_radar/scan'话题： 右雷达数据
+'/right_radar/filtered_scan'话题： 右雷达数据(滤波后)
+'/main_radar/scan'话题： 主雷达数据
+'/main_radar/filtered_scan'话题： 主雷达数据(滤波后)
+
+'/obstacle_flags'话题： 避障标志(自定义消息)
+'/twin_radar/line_detection_info'话题： 双线检测信息(自定义消息)
+'/left_radar/H_detection_info'话题： 左雷达H检测信息(自定义消息)
+'''
