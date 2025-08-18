@@ -526,7 +526,7 @@ class SeparateRadarLineDetector:
                 point.z = 0.0
                 marker.points.append(point)
         
-        pub.publish(marker)
+        # pub.publish(marker)
 
     def publish_stable_lines(self, radar_name):
         """Publish stable lines for a single radar"""
@@ -608,7 +608,7 @@ class SeparateRadarLineDetector:
                               f"S:{stability_score}")
             marker_array.markers.append(text_marker)
         
-        pub.publish(marker_array)
+        # pub.publish(marker_array)
 
     def process_single_radar(self, scan_msg, radar_name):
         """处理单个雷达的数据"""
@@ -905,7 +905,7 @@ class SeparateRadarLineDetector:
             
             marker_array.markers.append(point_marker)
         
-        self.connection_line_pub.publish(marker_array)
+        # self.connection_line_pub.publish(marker_array)
 
     def clear_connection_line(self):
         """清除连接线可视化"""
@@ -913,7 +913,7 @@ class SeparateRadarLineDetector:
         delete_marker = Marker()
         delete_marker.action = Marker.DELETEALL
         marker_array.markers.append(delete_marker)
-        self.connection_line_pub.publish(marker_array)
+        # self.connection_line_pub.publish(marker_array)
 
     def save_debug_images(self, occupancy_img, edges, lines, radar_name):
         """保存调试图像显示检测过程"""
@@ -1040,7 +1040,6 @@ class SeparateRadarLineDetector:
             line_info.length = props['length']
             line_info.angle_deg = props['angle_deg']
             line_info.distance = props['distance_from_origin']
-            line_info.distance = 2
 
             line_detection_array_msg.lines.append(line_info)
 
