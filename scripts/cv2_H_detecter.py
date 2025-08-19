@@ -887,9 +887,10 @@ class StableRadarLineDetector:
                 self.publish_scan_points(scan_msg)
             
         except Exception as e:
-            rospy.logerr(f"Error in scan callback: {e}")
-            import traceback
-            traceback.print_exc()
+            # rospy.logerr(f"Error in scan callback: {e}")
+            # import traceback
+            # traceback.print_exc()
+            pass
 
     def save_debug_images(self, occupancy_img, edges, lines):
         """Save debug images showing the detection process"""

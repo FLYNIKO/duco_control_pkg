@@ -55,7 +55,7 @@ class RadarObstacleAvoidance:
         self.last_right_time = rospy.Time(0)
         
         # 性能参数
-        self.max_data_age = rospy.Duration(rospy.get_param('~max_data_age', 0.2))
+        self.max_data_age = rospy.Duration(rospy.get_param('~max_data_age', 1))
         fusion_freq = rospy.get_param('~fusion_frequency', 20.0)
         
         # 定时器用于定期融合发布点云

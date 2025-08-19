@@ -23,7 +23,7 @@ class DemoApp:
         self.thread = threading.Thread(target=self.thread_fun)
         self.tcp_state = []  
         self.tcp_pub = rospy.Publisher('/Duco_state', Float64MultiArray, queue_size=20)
-        self.adjust_pub = rospy.Publisher('/Duco_adjust', Float64MultiArray, queue_size=20) 
+        # self.adjust_pub = rospy.Publisher('/Duco_adjust', Float64MultiArray, queue_size=20) 
         self.sys_ctrl = None 
 
     def robot_connect(self):
@@ -50,41 +50,12 @@ class DemoApp:
         while not self.stopheartthread:
             tcp_pos = self.duco_thread.get_tcp_pose()
             tcp_state = self.duco_thread.get_robot_state()
-            sensor_data = self.sys_ctrl.get_sensor_data()
-            stp23_raw = [
-                sensor_data.get("up", -1),
-                sensor_data.get("front", -1),
-                sensor_data.get("left", -1),
-                sensor_data.get("right", -1)
-            ]
-            if self.sys_ctrl is not None:
-                anticrash_threshold = [
-                    self.sys_ctrl.anticrash_up,
-                    self.sys_ctrl.anticrash_front,
-                    self.sys_ctrl.anticrash_left,
-                    self.sys_ctrl.anticrash_right
-                ]
-                scan_threshold = [
-                    self.sys_ctrl.scan_range * 1000,
-                    self.sys_ctrl.min_jump_threshold,
-                ]
-                paint_threshould = [
-                    self.sys_ctrl.paint_beam_height,
-                    self.sys_ctrl.paint_fender_width
-                ]
-            else:
-                anticrash_threshold = [ANTICRASH_UP, ANTICRASH_FRONT, ANTICRASH_LEFT, ANTICRASH_RIGHT]
-                scan_threshold = [SCAN_RANGE * 1000, SCAN_JUMP]
-            
+
             self.tcp_state = tcp_state
             # 发布 ROS topic
             msg = Float64MultiArray()
-            msg.data = tcp_state + tcp_pos + stp23_raw
+            msg.data = tcp_state + tcp_pos
             self.tcp_pub.publish(msg)
-
-            adjust_msg = Float64MultiArray()
-            adjust_msg.data = anticrash_threshold + scan_threshold + paint_threshould
-            self.adjust_pub.publish(adjust_msg)
 
             self._stop_event.wait(0.2)
         self.duco_thread.close()

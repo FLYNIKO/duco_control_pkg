@@ -8,7 +8,7 @@ from std_msgs.msg import Float64MultiArray
 import sensor_msgs.point_cloud2 as pc2
 import tf.transformations as tf_trans
 # 导入自定义消息类型（请根据你的包名修改）
-from h_beam_simulation.msg import ObstacleFlags
+from duco_control_pkg.msg import ObstacleFlags
 
 from config import *
 
@@ -65,8 +65,8 @@ class EndEffectorObstacleAvoidance:
         self.threshold_front_rear = OB_THRESHOLD_FRONT_REAR  # 前后分界线
         
         # 前方区域检测范围（末端前方）
-        self.forward_min = 0.0    # 末端前方最小距离
-        self.forward_max = 1    # 末端前方最大距离
+        self.forward_min = -0.2    # 末端前方最小距离
+        self.forward_max = -1    # 末端前方最大距离
         
         # 安全距离
         self.safe_distance = OB_SAFE_DISTANCE  # 相对末端的安全距离
@@ -299,11 +299,11 @@ class EndEffectorObstacleAvoidance:
         
         # 区域划分（在末端坐标系中）
         regions = {
-            'left_front': (y > self.threshold_L) & (x > self.threshold_front_rear),  # 左前区
-            'left_rear': (y > self.threshold_L) & (x <= self.threshold_front_rear),   # 左后区
-            'right_front': (y < self.threshold_R) & (x > self.threshold_front_rear),  # 右前区
-            'right_rear': (y < self.threshold_R) & (x <= self.threshold_front_rear),  # 右后区
-            'center': (np.abs(y) <= self.threshold_M) & (x > self.forward_min) & (x < self.forward_max),  # 末端前方中央
+            'left_front': (y < self.threshold_L) & (x < self.threshold_front_rear),  # 左前区
+            'left_rear': (y < self.threshold_L) & (x >= self.threshold_front_rear),   # 左后区
+            'right_front': (y > self.threshold_R) & (x < self.threshold_front_rear),  # 右前区
+            'right_rear': (y > self.threshold_R) & (x >= self.threshold_front_rear),  # 右后区
+            'center': (np.abs(y) <= self.threshold_M) & (x < self.forward_min) & (x > self.forward_max),  # 末端前方中央
             'up': z > self.threshold_U,  # 末端上方
             'down': z < self.threshold_D  # 末端下方
         }

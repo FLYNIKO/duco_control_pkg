@@ -5,7 +5,7 @@ import threading
 
 from DucoCobot import DucoCobot
 from key_input_pkg.msg import KeyInput
-from duco_control_pkg.msg import LineDetectArray, LineInfo, ObstacleFlags
+from duco_control_pkg.msg import LineDetectionArray, LineInfo, ObstacleFlags
 from CylinderPaint_duco import CylinderAutoPaint
 from collections import deque
 from config import *
@@ -100,7 +100,7 @@ class system_control:
         self.flange_down_width = 0 # 下翼子板宽度
 
         self.theta_deg = PAINTDEG / 2  # 喷涂角度的一半
-        self.distance_to_cylinder = self.anticrash_front  # 末端与圆柱表面距离
+        self.distance_to_cylinder = 0  # 末端与圆柱表面距离
         self.painting_width = PAINTWIDTH  # 喷涂宽度
 
         # 目标线检测相关变量
@@ -215,10 +215,11 @@ class system_control:
         while self.sysrun and not rospy.is_shutdown():
             if time.time() - self.last_ob_time > TIMEOUT:
                 rospy.logwarn("--------------------------------\n障碍物检测超时，请检查传感器连接，此时无法避障！\n--------------------------------")
+                rospy.sleep(1)
                 continue
             else:
                 ob_data = self.get_obstacle_status()
-                tcp_pos = self.duco_cobot.get_tcp_pose()
+                tcp_pos = self.duco_ob.get_tcp_pose()
                 if self.is_obstacle_detected():
                     self.ob_flag = True
                     self.duco_ob.stop(True)
@@ -472,7 +473,7 @@ class system_control:
             key_bits = self.latest_keys[0]
             self.painting_deg_surface = self.latest_keys[7]
             self.painting_deg_flange = self.latest_keys[8]
-            self.painting_dist = self.latest_keys[9]
+            self.painting_dist = self.latest_keys[9]/1000
 
         # 按位解析
         return KeyInputStruct(

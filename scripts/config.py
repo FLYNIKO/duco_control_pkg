@@ -1,15 +1,19 @@
 '''雷达安装位置参数(相对于机械臂末端)'''
-MAIN_RADAR_OFFSET = [0.43, 0.0, 0.2, 0, 0, 0] # 主雷达偏移
-LEFT_RADAR_OFFSET = [0.4, 0.4, 0.1, 1.57, 0, 0] # 左雷达偏移
-RIGHT_RADAR_OFFSET = [0.4, -0.4, 0.1, 1.57, 0, 0] # 右雷达偏移
+#前后z 上下y 左右x
+MAIN_RADAR_OFFSET =     [0,  0.1,    0.1,  1.57,   1.57, 0] # 主雷达偏移
+LEFT_RADAR_OFFSET =     [-0.2,     0,      0,  0,      1.57, 0] # 左雷达偏移
+RIGHT_RADAR_OFFSET =    [0.2,     0,      0,  0,      1.57, 0] # 右雷达偏移
+# MAIN_RADAR_OFFSET =     [0, 0, 0.1, 0, 0, 1.57] # 主雷达偏移
+# LEFT_RADAR_OFFSET =     [-0.2, 0, 0, 0, 1.57, 1.57] # 左雷达偏移
+# RIGHT_RADAR_OFFSET =    [0.2, 0, 0, 0, 1.57, 1.57] # 右雷达偏移
 '''避障区域参数'''
-OB_THRESHOLD_L = 0.5 # 左区阈值
-OB_THRESHOLD_R = -0.5 # 右区阈值
-OB_THRESHOLD_M = 0.5 # 中区阈值
-OB_THRESHOLD_U = 0.3 # 上区阈值
+OB_THRESHOLD_L = -0.35 # 左区阈值
+OB_THRESHOLD_R = 0.35 # 右区阈值
+OB_THRESHOLD_M = 0.35 # 中区阈值
+OB_THRESHOLD_U = 0.2 # 上区阈值
 OB_THRESHOLD_D = -0.2 # 下区阈值
-OB_THRESHOLD_FRONT_REAR = -0.4 # 前后分界线
-OB_SAFE_DISTANCE = 0.9 # 安全距离
+OB_THRESHOLD_FRONT_REAR = 0.05 # 前后分界线
+OB_SAFE_DISTANCE = 0.5 # 安全距离
 
 IP = '192.168.100.10' # 虚拟机IP地址
 # IP = '192.168.0.168' # 机械臂IP地址
