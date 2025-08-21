@@ -10,6 +10,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import ColorRGBA
 import matplotlib.pyplot as plt
 from collections import deque
+from config import *
 import threading
 
 from duco_control_pkg.msg import LineInfo, LineDetectionArray 
@@ -50,7 +51,7 @@ class SeparateRadarLineDetector:
         self.density_threshold = 0.7
         
         # 雷达间距参数（可调节）
-        self.radar_separation = rospy.get_param('~radar_separation', 1.0)  # 两雷达间距离，默认1.0米
+        self.radar_separation = abs(LEFT_RADAR_OFFSET[0]) + abs(RIGHT_RADAR_OFFSET[0])  # 两雷达间距离，默认1.0米
         
         # 双雷达独立配置（相对于中央点的位置）
         self.radar_configs = {

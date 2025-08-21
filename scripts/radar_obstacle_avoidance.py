@@ -65,8 +65,8 @@ class EndEffectorObstacleAvoidance:
         self.threshold_front_rear = OB_THRESHOLD_FRONT_REAR  # 前后分界线
         
         # 前方区域检测范围（末端前方）
-        self.forward_min = -0.2    # 末端前方最小距离
-        self.forward_max = -1    # 末端前方最大距离
+        self.forward_min = OB_FORWARD_MIN    # 末端前方最小距离
+        self.forward_max = OB_FORWARD_MAX    # 末端前方最大距离
         
         # 安全距离
         self.safe_distance = OB_SAFE_DISTANCE  # 相对末端的安全距离

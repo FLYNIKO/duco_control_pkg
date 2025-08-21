@@ -235,11 +235,11 @@ class system_control:
                     
                     elif self.ob_status == 1: # 无避障
                         obstacle_keys = ['left_front', 'left_rear', 'right_front', 'right_rear', 'center', 'up', 'down']
+                        rospy.logwarn("--------------------------------")
                         for key in obstacle_keys:
                             if ob_data.get(key):
-                                rospy.logwarn("--------------------------------")
                                 rospy.logwarn(f"检测到{key}障碍物，注意操作！")
-                                rospy.logwarn("--------------------------------")
+                        rospy.logwarn("--------------------------------")
 
                     elif self.ob_status == 2: # 自动sync 避障逻辑
                         if self.paint_motion == 1 or self.paint_motion == 5:
@@ -306,13 +306,13 @@ class system_control:
                 if web_line is not None:
                     arm_z = tcp_pos[2]
                     if web_line.start_point.z > web_line.end_point.z:
-                        self.center_z = arm_z + LEFT_RADAR_OFFSET[2] + web_line.start_point.z - web_line.length / 2
-                        self.web_top_point = [web_line.start_point.x + LEFT_RADAR_OFFSET[0] + tcp_pos[0], web_line.start_point.y + LEFT_RADAR_OFFSET[1] + tcp_pos[1], web_line.start_point.z + LEFT_RADAR_OFFSET[2] + tcp_pos[2]]
+                        self.center_z = arm_z + LEFT_RADAR_OFFSET[1] + web_line.start_point.z - web_line.length / 2
+                        self.web_top_point = [web_line.start_point.x + LEFT_RADAR_OFFSET[2] + tcp_pos[0], web_line.start_point.y + LEFT_RADAR_OFFSET[0] + tcp_pos[1], web_line.start_point.z + LEFT_RADAR_OFFSET[1] + tcp_pos[2]]
                     else:
-                        self.center_z = arm_z + LEFT_RADAR_OFFSET[2] + web_line.end_point.z - web_line.length / 2
-                        self.web_top_point = [web_line.end_point.x + LEFT_RADAR_OFFSET[0] + tcp_pos[0], web_line.end_point.y + LEFT_RADAR_OFFSET[1] + tcp_pos[1], web_line.end_point.z + LEFT_RADAR_OFFSET[2] + tcp_pos[2]]
+                        self.center_z = arm_z + LEFT_RADAR_OFFSET[1] + web_line.end_point.z - web_line.length / 2
+                        self.web_top_point = [web_line.end_point.x + LEFT_RADAR_OFFSET[2] + tcp_pos[0], web_line.end_point.y + LEFT_RADAR_OFFSET[0] + tcp_pos[1], web_line.end_point.z + LEFT_RADAR_OFFSET[1] + tcp_pos[2]]
 
-                    self.center_x = web_line.distance + LEFT_RADAR_OFFSET[0] - self.painting_dist + tcp_pos[0]
+                    self.center_x = web_line.distance + LEFT_RADAR_OFFSET[2] - self.painting_dist + tcp_pos[0]
                     self.web_height = web_line.length
 
                 if up_line is not None:
@@ -471,8 +471,8 @@ class system_control:
             rospy.logerr("与控制端连接丢失，执行急停，阈值使用默认值！")
         else:
             key_bits = self.latest_keys[0]
-            self.painting_deg_surface = self.latest_keys[7]
-            self.painting_deg_flange = self.latest_keys[8]
+            self.painting_deg_surface = abs(self.latest_keys[7])
+            self.painting_deg_flange = abs(self.latest_keys[8])
             self.painting_dist = self.latest_keys[9]/1000
 
         # 按位解析
@@ -582,7 +582,16 @@ class system_control:
                         - (self.painting_dist * math.sin(rad2) - self.web_height/2),
                         tcp_pos[3], tcp_pos[4], tcp_pos[5]] 
 
-                    rospy.loginfo("------ |-| 已找到5个喷涂位姿，选择位置开始喷涂！------")
+
+                    self.pos_move(self.init_pos)
+                    
+                    rospy.loginfo("------ |-| 已找到5个喷涂位姿，选择位置开始喷涂！------\n")
+                    rospy.loginfo("   ↓       喷涂上表面位姿： %s" % self.paint_top)
+                    rospy.loginfo("===== ↙    喷涂下翼面位姿： %s" % self.paint_high)
+                    rospy.loginfo("  |     ←  喷涂中心位姿：  %s" % self.paint_center)
+                    rospy.loginfo("===== ↖    喷涂上翼面位姿： %s" % self.paint_low)
+                    rospy.loginfo("   ↑       喷涂下表面位姿： %s" % self.paint_bottom)
+                    rospy.loginfo("\n------------------------------------------------")
 
                     self.find_mode = False
                     return
@@ -690,6 +699,12 @@ class system_control:
             elif aim_pos == self.paint_bottom:
                 self.paint_motion = 5
                 rospy.loginfo("移动到喷涂底部位置： %s" % aim_pos)
+            elif aim_pos == self.init_pos:
+                self.paint_motion = 0
+                rospy.loginfo("移动到初始位置： %s" % aim_pos)
+            elif aim_pos == self.serv_pos:
+                self.paint_motion = 0
+                rospy.loginfo("移动到维修位置： %s" % aim_pos)
             else:
                 self.paint_motion = 0
                 rospy.loginfo("移动到目标位置： %s" % aim_pos)
@@ -712,7 +727,6 @@ class system_control:
         rospy.loginfo("移动到初始位置: %s" % self.init_pos)
         rospy.loginfo("================================")
         rospy.loginfo("'/Duco_state'                        话题： 机械臂状态")
-        rospy.loginfo("'/Duco_adjust'                       话题： 机械臂调整")
         rospy.loginfo("'/left_radar/scan'                   话题： 左雷达数据")
         rospy.loginfo("'/left_radar/filtered_scan'          话题： 左雷达数据(滤波后)")
         rospy.loginfo("'/right_radar/scan'                  话题： 右雷达数据")
@@ -780,17 +794,14 @@ class system_control:
                     self.duco_cobot.speedl([0, -v1, 0, 0, 0, 0],self.acc ,-1, False)
                 #初始化位置
                 elif key_input.init:
-                    self.paint_motion = 0
                     self.ob_status = 0
-                    self.duco_cobot.servoj_pose(self.init_pos, self.vel, self.acc, '', '', '', True)
-                    rospy.loginfo("移动到初始位置： %s" % self.init_pos)
+                    self.pos_move(self.init_pos)
+                    self.ob_status = 1
                 #维修位置
                 elif key_input.serv:
-                    self.paint_motion = 0
                     self.ob_status = 0
-                    self.duco_cobot.servoj_pose(self.serv_pos, self.vel, self.acc, '', '', '', True)
+                    self.pos_move(self.serv_pos)
                     self.ob_status = 1
-                    rospy.loginfo("移动到维修位置： %s" % self.serv_pos)
                 #喷涂顶部
                 elif key_input.top:
                     self.pos_move(self.paint_top)
