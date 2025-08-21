@@ -11,17 +11,24 @@ I      ●）
    ↑       下表面喷涂
 
 in config.py:
-机械臂运动坐标系为  前后X（后），左右Y（右），上下Z（上）,而雷达放置的坐标系是 前后z（后） 上下y（上） 左右x（右） （定义方法是机械臂的rx、ry、rz 0点的XYZ坐标系 ，雷达放置为雷达正方向对向X、Z正方向）
+机械臂运动坐标系为  前后X（后），左右Y（右），上下Z（上）,而雷达放置的坐标系是 前后z（后） 上下y（上） 左右x（右）
+（定义方法是机械臂的rx、ry、rz 0点的XYZ坐标系 ，雷达放置为雷达正方向对向X、Z正方向）
 in laser_scan_averager.py：
 将每个雷达的数据每5帧过滤平均后输出1帧，原10HZ过滤后2HZ，
 in cv2_H_detecter.py:
-使用openCV将左雷达扫描到的数据转换为二维图像，并根据预设：两条平行线一条垂直线，找到符合U型条件的三根线，根据长度和角度，判断是web（腹板）或是flange（翼板）并输出相应的线数据，之后在ManualControl.py中使用这些数据来找5个喷涂位姿以及在喷涂234位置时的喷涂位置保持。
+使用openCV将左雷达扫描到的数据转换为二维图像，并根据预设：两条平行线一条垂直线，找到符合U型条件的三根线，根据长度
+和角度，判断是web（腹板）或是flange（翼板）并输出相应的线数据，之后在ManualControl.py中使用这些数据来找5个喷涂
+位姿以及在喷涂234位置时的喷涂位置保持。
 in cv2_line_detecher_twin.py：
-使用openCV将左右两个雷达扫描到的数据转换为单独的二维图像，并且将两个雷达扫描到的线信息转换坐标系到两个雷达的中间点，如果每个雷达都能扫描到一条符合角度、长度条件的线，则会连接两条线的中点，在ManualControl.py中会使用这根线的位置和角度来调整机械臂喷涂上下表面时的位姿。
+使用openCV将左右两个雷达扫描到的数据转换为单独的二维图像，并且将两个雷达扫描到的线信息转换坐标系到两个雷达的中间点，
+如果每个雷达都能扫描到一条符合角度、长度条件的线，则会连接两条线的中点，在ManualControl.py中会使用这根线的位置和
+角度来调整机械臂喷涂上下表面时的位姿。
 in radar_three_cloud.py：
-将三个雷达的LaserScan类型的/scan，读取机械臂末端位姿后统一坐标系到机械臂底座，3in1，转换成PointCloud2类型的/obstacle_avoidance/pointcloud话题
+将三个雷达的LaserScan类型的/scan，读取机械臂末端位姿后统一坐标系到机械臂底座，3in1，转换成PointCloud2类型的
+/obstacle_avoidance/pointcloud话题
 in radar_obstacle_avoidance.py：
-读取/obstacle_avoidance/pointcloud，并根据config.py中机械臂运动的坐标系划分区域识别避障，最后输出每个区域的bool值到/obstacle_flags作为该区域的避障开关。
+读取/obstacle_avoidance/pointcloud，并根据config.py中机械臂运动的坐标系划分区域识别避障，最后输出每个区域的
+bool值到/obstacle_flags作为该区域的避障开关。
 
 /Duco_state                        话题： 机械臂状态
 /left_radar/scan                   话题： 左雷达数据
