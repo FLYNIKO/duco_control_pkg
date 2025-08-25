@@ -1,7 +1,7 @@
 '''雷达安装位置参数(相对于机械臂末端)'''
 # 机械臂运动为  前后X（后），左右Y（右），上下Z（上）
 #前后z 上下y 左右x （定义方法是机械臂的rx、ry、rz 0点的XYZ坐标系 ，雷达放置为雷达正方向对向X、Z正方向）
-MAIN_RADAR_OFFSET =     [ 0.0, 0.1, 0.1, 1.57, 1.57, 0] # 主雷达偏移
+MAIN_RADAR_OFFSET =     [ 0.0, 0.0, 0.0, 1.57, 1.57, 0] # 主雷达偏移
 LEFT_RADAR_OFFSET =     [-0.2, 0.0, 0.0, 0.0, 1.57, 0] # 左雷达偏移
 RIGHT_RADAR_OFFSET =    [ 0.2, 0.0, 0.0, 0.0, 1.57, 0] # 右雷达偏移
 # MAIN_RADAR_OFFSET =     [0, 0, 0.1, 0, 0, 1.57] # 主雷达偏移
@@ -15,7 +15,7 @@ OB_THRESHOLD_M = 0.35 # 中区阈值（左右区绝对值）
 OB_THRESHOLD_U = 0.2 # 上区阈值
 OB_THRESHOLD_D = -0.2 # 下区阈值
 OB_THRESHOLD_FRONT_REAR = 0.05 # 前后分界线
-OB_SAFE_DISTANCE = 0.5 # 安全距离
+OB_SAFE_DISTANCE = 0.4 # 安全距离
 OB_FORWARD_MIN = -0.2 # 前方最小距离
 OB_FORWARD_MAX = -1 # 前方最大距离
 

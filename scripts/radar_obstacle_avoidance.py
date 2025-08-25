@@ -95,14 +95,6 @@ class EndEffectorObstacleAvoidance:
         rospy.loginfo(f"  前方范围: {self.forward_min:.2f}m ~ {self.forward_max:.2f}m")
         rospy.loginfo("===============================")
     
-    def setup_publishers(self):
-        """设置发布器"""
-        self.left_pub = rospy.Publisher('/obstacle_flags/left', Bool, queue_size=1)
-        self.right_pub = rospy.Publisher('/obstacle_flags/right', Bool, queue_size=1)
-        self.center_pub = rospy.Publisher('/obstacle_flags/center', Bool, queue_size=1)
-        self.up_pub = rospy.Publisher('/obstacle_flags/up', Bool, queue_size=1)
-        self.down_pub = rospy.Publisher('/obstacle_flags/down', Bool, queue_size=1)
-    
     def duco_state_callback(self, msg):
         """机械臂状态回调函数"""
         try:

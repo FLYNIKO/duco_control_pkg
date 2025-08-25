@@ -1,17 +1,17 @@
 <launch>
     <!-- 激光雷达节点 -->
     <include file="$(find rplidar_ros)/launch/rplidar_3c1.launch"/>
+    <!-- 机械臂主程序 -->
+    <node name="duco_control" pkg="duco_control_pkg" type="main1.py" output="screen"> </node>
+    <!-- 雷达点云融合节点 -->
+    <node name="radar_three_cloud" pkg="duco_control_pkg" type="radar_three_cloud.py" output="screen"> </node>
+    <!-- 雷达避障节点 -->
+    <node name="radar_obstacle_avoidance" pkg="duco_control_pkg" type="radar_obstacle_avoidance.py" output="screen"> </node>
     <!-- 激光雷达点云平均节点 -->
     <node name="laser_scan_averager" pkg="duco_control_pkg" type="laser_scan_averager.py" output="screen"> </node>
     <!-- 激光雷达H识别节点 -->
     <node name="cv2_H_detecter" pkg="duco_control_pkg" type="cv2_H_detecter.py" output="screen" > </node>
     <!-- 激光雷达线识别节点 -->
     <node name="cv2_line_detecter_twin" pkg="duco_control_pkg" type="cv2_line_detecter_twin.py" output="screen"> </node>
-    <!-- 雷达点云融合节点 -->
-    <node name="radar_three_cloud" pkg="duco_control_pkg" type="radar_three_cloud.py" output="screen"> </node>
-    <!-- 雷达避障节点 -->
-    <node name="radar_obstacle_avoidance" pkg="duco_control_pkg" type="radar_obstacle_avoidance.py" output="screen"> </node>
-    <!-- 机械臂主程序 -->
-    <node name="duco_control" pkg="duco_control_pkg" type="main1.py" output="screen"> </node>
 </launch>
 
