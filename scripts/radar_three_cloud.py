@@ -285,8 +285,8 @@ class RadarObstacleAvoidance:
         self.pointcloud_pub.publish(pointcloud_msg)
         
         # 调试信息
-        if valid_radars:
-            rospy.loginfo_throttle(2.0, f"发布避障点云，共{len(points)}个点，来自雷达: {valid_radars}")
+        # if valid_radars:
+        #     rospy.loginfo_throttle(2.0, f"发布避障点云，共{len(points)}个点，来自雷达: {valid_radars}")
     
     def update_radar_positions(self, left_offset=None, right_offset=None):
         """

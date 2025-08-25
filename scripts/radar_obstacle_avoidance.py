@@ -76,7 +76,7 @@ class EndEffectorObstacleAvoidance:
         self.last_process_time = rospy.Time.now()
         
         # 调试模式
-        self.debug_mode = True
+        self.debug_mode = False
         
         # self.log_parameters()
     
@@ -159,7 +159,7 @@ class EndEffectorObstacleAvoidance:
             self.publish_obstacle_flags(obstacle_results)
             
             # 定期输出统计信息
-            # self.log_statistics(current_time, len(points), len(voxelized_points))
+            self.log_statistics(current_time, len(points), len(voxelized_points))
             
         except Exception as e:
             rospy.logerr(f"处理点云数据时出错: {e}")
@@ -350,7 +350,7 @@ class EndEffectorObstacleAvoidance:
                 if results[region]:
                     active_regions.append(chinese_name)
             
-            if active_regions:
+            if active_regions and self.debug_mode:
                 rospy.logwarn(f"末端附近检测到障碍: {', '.join(active_regions)}")
                 for region, chinese_name in region_names.items():
                     if results[region] and region in results['min_distances']:

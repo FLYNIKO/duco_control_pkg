@@ -10,13 +10,13 @@ from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import ColorRGBA
 import matplotlib.pyplot as plt
 from collections import deque
-
+from config import *
 from duco_control_pkg.msg import LineInfo, LineDetectionArray 
 
 class StableRadarLineDetector:
     def __init__(self):
         rospy.init_node('stable_radar_line_detector')
-        
+        self.debug_mode = DEBUG_MODE
         # Parameters for image conversion
         self.image_size = 800
         self.max_range = 2.0
@@ -878,7 +878,8 @@ class StableRadarLineDetector:
                 # Publish results
                 self.publish_scan_points(scan_msg)
                 self.publish_h_beam_markers(stable_h_beams, stable_standalone)
-                self.save_debug_images(occupancy_img, edges, merged_lines)
+                if self.debug_mode:
+                    self.save_debug_images(occupancy_img, edges, merged_lines)
 
                 self.publish_debug_line_info(stable_h_beams)
 

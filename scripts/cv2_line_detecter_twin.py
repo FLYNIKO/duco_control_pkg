@@ -18,7 +18,7 @@ from duco_control_pkg.msg import LineInfo, LineDetectionArray
 class SeparateRadarLineDetector:
     def __init__(self):
         rospy.init_node('separate_radar_line_detector')
-        
+        self.debug_mode = DEBUG_MODE
         # Parameters for image conversion
         self.image_size = 800  # 适中的图像尺寸
         self.max_range = 2      # 适中的范围
@@ -706,7 +706,8 @@ class SeparateRadarLineDetector:
                 # 发布结果（使用中央坐标系的点）
                 self.publish_scan_points(scan_points_center, radar_name)
                 self.publish_stable_lines(radar_name)
-                self.save_debug_images(occupancy_img, edges, merged_lines, radar_name)
+                if self.debug_mode: 
+                    self.save_debug_images(occupancy_img, edges, merged_lines, radar_name)
                 
                 # 检查两线连接功能
                 self.check_and_publish_connection_line()
