@@ -324,6 +324,7 @@ class system_control:
                     if web_line.start_point.z > web_line.end_point.z:
                         self.center_z = arm_z + LEFT_RADAR_OFFSET[1] + web_line.start_point.z - web_line.length / 2
                         self.web_top_point = [web_line.start_point.x + LEFT_RADAR_OFFSET[2] + tcp_pos[0], web_line.start_point.y + LEFT_RADAR_OFFSET[0] + tcp_pos[1], web_line.start_point.z + LEFT_RADAR_OFFSET[1] + tcp_pos[2]]
+                    
                     else:
                         self.center_z = arm_z + LEFT_RADAR_OFFSET[1] + web_line.end_point.z - web_line.length / 2
                         self.web_top_point = [web_line.end_point.x + LEFT_RADAR_OFFSET[2] + tcp_pos[0], web_line.end_point.y + LEFT_RADAR_OFFSET[0] + tcp_pos[1], web_line.end_point.z + LEFT_RADAR_OFFSET[1] + tcp_pos[2]]
@@ -371,7 +372,7 @@ class system_control:
                 target_line = line
                 break
         
-        if target_line is not None:
+        if target_line is not None and self.position_flag:
             # 提取 distance 和 angle_deg
             self.surface_distance = target_line.distance
             self.surface_angle_deg = target_line.angle_deg
@@ -556,7 +557,7 @@ class system_control:
                     rospy.logwarn(" |-| 检测到障碍物，无法寻找喷涂位姿！")
                     self.find_mode = False
                     return
-
+                rospy.sleep(2)
                 if self.H_find_flag:
                     rospy.loginfo(" |-| 开始寻找喷涂位姿,请确保机械臂在目标梁中间或上方")
                     rospy.sleep(2)
@@ -574,28 +575,30 @@ class system_control:
 
                     rad1 = math.radians(self.painting_deg_surface)
                     # 喷涂上表面
+                    web_top_x = tcp_pos[0] - self.painting_dist
+                    web_top_z = tcp_pos[2] + self.web_height/2
                     self.paint_top = [
-                        (self.web_top_point[0] - self.web_height * math.tan(rad1)/4 - self.painting_dist * math.cos(rad1)),
+                        (web_top_x - self.web_height * math.tan(rad1)/4 - self.painting_dist * math.cos(rad1)),
                         tcp_pos[1],
-                        self.web_top_point[2] + self.painting_dist * math.sin(rad1),
+                        web_top_z + self.painting_dist * math.sin(rad1),
                         tcp_pos[3], tcp_pos[4], tcp_pos[5]] 
                     # 喷涂下表面
                     self.paint_bottom = [
-                        (self.web_top_point[0] - self.web_height * math.tan(rad1)/4 - self.painting_dist * math.cos(rad1)),
+                        (web_top_x - self.web_height * math.tan(rad1)/4 - self.painting_dist * math.cos(rad1)),
                         tcp_pos[1],
-                        - (self.web_top_point[2] + self.painting_dist * math.sin(rad1)),
+                        - (web_top_z + self.painting_dist * math.sin(rad1)),
                         tcp_pos[3], tcp_pos[4], tcp_pos[5]] 
 
                     rad2 = math.radians(self.painting_deg_flange)
                     # 喷涂下翼面
                     self.paint_high = [
-                        (self.web_top_point[0] - self.flange_down_width/2 - self.painting_dist * math.cos(rad2)),
+                        (web_top_x - self.flange_down_width/2 - self.painting_dist * math.cos(rad2)),
                         tcp_pos[1],
                         (self.painting_dist * math.sin(rad2) - self.web_height/2),
                         tcp_pos[3], tcp_pos[4], tcp_pos[5]] 
                     # 喷涂上翼面
                     self.paint_low = [
-                        (self.web_top_point[0] - self.flange_down_width/2 - self.painting_dist * math.cos(rad2)),
+                        (web_top_x - self.flange_down_width/2 - self.painting_dist * math.cos(rad2)),
                         tcp_pos[1],
                         - (self.painting_dist * math.sin(rad2) - self.web_height/2),
                         tcp_pos[3], tcp_pos[4], tcp_pos[5]] 

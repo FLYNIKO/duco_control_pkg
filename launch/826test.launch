@@ -1,0 +1,10 @@
+<launch>
+    <!-- 激光雷达节点 -->
+    <include file="$(find rplidar_ros)/launch/rplidar_3c1.launch"/>
+    <!-- 雷达点云融合节点 -->
+    <node name="radar_three_cloud" pkg="duco_control_pkg" type="radar_three_cloud.py" output="screen"> </node>
+    <!-- 雷达避障节点 -->
+    <node name="radar_obstacle_avoidance" pkg="duco_control_pkg" type="radar_obstacle_avoidance.py" output="screen"> </node>
+
+</launch>
+

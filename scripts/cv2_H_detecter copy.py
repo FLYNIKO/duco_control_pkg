@@ -18,28 +18,25 @@ class StableRadarLineDetector:
         rospy.init_node('stable_radar_line_detector')
         self.debug_mode = DEBUG_MODE
         # Parameters for image conversion
-        self.image_size = 600
+        # Parameters for image conversion
+        self.image_size = 800
         self.max_range = 1.0
         self.resolution = self.max_range / (self.image_size / 2)
         
-         # 圆形处理范围参数
-        self.processing_radius_meters = 0.5  # 处理半径（米），只处理此范围内的数据
-        self.processing_radius_pixels = int(self.processing_radius_meters / self.resolution)  # 转换为像素
-        
-        # Enhanced Hough line detection parameters - 平衡检测能力和精度
-        self.hough_threshold = 12     # 适当提高阈值以减少误检
-        self.min_line_length = 25      # 稍微提高最小线长要求
-        self.max_line_gap = 50         # 适当减少间隙容忍度
+        # Enhanced Hough line detection parameters
+        self.hough_threshold = 15      # Lowered for better detection of short lines
+        self.min_line_length = 35      # Shorter for flanges
+        self.max_line_gap = 50         # Larger gap tolerance
         
         # Separate parameters for short lines (flanges)
-        self.flange_hough_threshold = 12    # 适当提高阈值
-        self.flange_min_line_length = 12    # 提高最小线长要求
-        self.flange_max_line_gap = 20      # 减少间隙容忍度
+        self.flange_hough_threshold = 18    # Even lower for flanges
+        self.flange_min_line_length = 18    # Very short lines
+        self.flange_max_line_gap = 20        # Smaller gaps for flanges
         
         # Edge detection parameters
-        self.canny_low = 8             # 适当提高低阈值
-        self.canny_high = 90           # 适当提高高阈值
-        self.gaussian_kernel = 3       # 保持小核以减少平滑
+        self.canny_low = 10            # Lower thresholds for better edge detection
+        self.canny_high = 100
+        self.gaussian_kernel = 3       # Smaller kernel for less smoothing
         
         # Stability parameters
         self.temporal_buffer_size = 5  # Number of frames to track
@@ -48,20 +45,17 @@ class StableRadarLineDetector:
         self.line_id_counter = 0
         
         # Line tracking and stability parameters
-        self.position_threshold = 0.15   # 减少位置阈值以提高精度
-        self.angle_threshold = 12        # 减少角度阈值以提高精度
-        self.stability_requirement = 3  # 增加稳定性要求以减少误检
-        self.max_line_age = 4          # 减少最大线龄
+        self.position_threshold = 0.1   # meters
+        self.angle_threshold = 10       # degrees
+        self.stability_requirement = 5  # frames needed for stable detection
+        self.max_line_age = 5         # max frames without detection
         
         # Advanced filtering parameters
-        self.min_line_length_meters = 0.10  # 适当提高最小线长要求
-        self.min_line_deg = 90
-        self.min_flange_length_meters = 0.06 # 适当提高最小法兰长度
-        self.max_line_length_meters = 2.2   # 适当减少最大线长
-        self.density_threshold = 0.5    # 适当提高密度阈值
-
-        # 如果还是有太多小线段，可以增加最小线长要求
-        self.min_line_length_pixels_final = 25  # 最终过滤的最小像素长度
+        self.min_line_length_meters = 0.3  # Shorter for flanges
+        self.min_line_deg= 90
+        self.min_flange_length_meters = 0.1 # Very short flanges
+        self.max_line_length_meters = 2.0
+        self.density_threshold = 0.6    # Lower threshold for short lines
         
         # Subscriber and publishers
         self.scan_sub = rospy.Subscriber('/left_radar/filtered_scan', LaserScan, self.scan_callback)
@@ -84,7 +78,7 @@ class StableRadarLineDetector:
         """Convert cartesian coordinates to image pixel coordinates"""
         center = self.image_size // 2
         img_x = center + (x / self.resolution).astype(int)
-        img_y = center - (y / self.resolution).astype(int)  # 修复镜像问题：从 center - y 改为 center + y
+        img_y = center - (y / self.resolution).astype(int)
         img_x = np.clip(img_x, 0, self.image_size - 1)
         img_y = np.clip(img_y, 0, self.image_size - 1)
         return img_x, img_y
@@ -118,16 +112,8 @@ class StableRadarLineDetector:
         
         # Create base occupancy image
         occupancy_img = np.zeros((self.image_size, self.image_size), dtype=np.uint8)
-
-        # 只处理圆形范围内的点
-        center = self.image_size // 2
-        for i in range(len(img_x)):
-            # 计算点到中心的距离（像素）
-            dist_from_center = math.sqrt((img_x[i] - center)**2 + (img_y[i] - center)**2)
-            
-            # 只保留在指定半径内的点
-            if dist_from_center <= self.processing_radius_pixels:
-                occupancy_img[img_y[i], img_x[i]] = 255
+        occupancy_img[img_y, img_x] = 255
+        
         # Multi-scale morphological operations for better line continuity
         # Small kernel for fine details
         kernel_small = np.ones((2, 2), np.uint8)
@@ -135,19 +121,11 @@ class StableRadarLineDetector:
         
         # Medium kernel for connecting nearby points
         kernel_medium = np.ones((3, 3), np.uint8)
-        occupancy_img = cv2.dilate(occupancy_img, kernel_medium, iterations=2)  # 增加迭代次数
+        occupancy_img = cv2.dilate(occupancy_img, kernel_medium, iterations=1)
         
         # Large kernel for major structure continuity
-        kernel_large = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))  # 增加核大小
+        kernel_large = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         occupancy_img = cv2.morphologyEx(occupancy_img, cv2.MORPH_CLOSE, kernel_large)
-        
-        # 额外的形态学操作以更好地连接U型结构
-        kernel_connect = np.ones((4, 4), np.uint8)
-        occupancy_img = cv2.morphologyEx(occupancy_img, cv2.MORPH_CLOSE, kernel_connect)
-        
-        # 添加噪声清理：去除小的孤立点
-        kernel_clean = np.ones((2, 2), np.uint8)
-        occupancy_img = cv2.morphologyEx(occupancy_img, cv2.MORPH_OPEN, kernel_clean)
         
         return occupancy_img, (x, y)
 
@@ -188,14 +166,6 @@ class StableRadarLineDetector:
                                          minLineLength=self.flange_min_line_length,
                                          maxLineGap=self.flange_max_line_gap)
         
-        # 额外的检测策略：使用平衡的参数检测U型结构的曲线部分
-        lines_curved = cv2.HoughLinesP(edges_combined, 
-                                     rho=2,  # 增加rho步长
-                                     theta=np.pi/180, 
-                                     threshold=12,  # 平衡的阈值
-                                     minLineLength=25,  # 适当的最小线长
-                                     maxLineGap=30)  # 平衡的间隙容忍度
-        
         # Combine all results
         all_lines = []
         if lines_standard is not None:
@@ -204,8 +174,6 @@ class StableRadarLineDetector:
             all_lines.extend(lines_sensitive)
         if lines_fine_angle is not None:
             all_lines.extend(lines_fine_angle)
-        if lines_curved is not None:
-            all_lines.extend(lines_curved)
         
         return all_lines, edges_combined
 
@@ -329,106 +297,7 @@ class StableRadarLineDetector:
         # print(f"Found {len(h_beams)} H-beam structures, {len(standalone_flanges)} standalone flanges")
         
         return h_beams, standalone_flanges, standalone_webs
-
-    def simple_merge_similar_lines(self, lines):
-        """简单暴力的线段合并方法"""
-        if not lines:
-            return []
-        
-        merged_lines = []
-        used = [False] * len(lines)
-        
-        for i, line1 in enumerate(lines):
-            if used[i]:
-                continue
-            
-            # 收集所有与line1相似的线段
-            similar_lines = [line1]
-            used[i] = True
-            
-            for j, line2 in enumerate(lines[i+1:], i+1):
-                if used[j]:
-                    continue
-                
-                props1 = line1['properties']
-                props2 = line2['properties']
-                
-                # 简单判断条件：中点距离 + 角度差异
-                midpoint_dist = math.sqrt(
-                    (props1['midpoint'][0] - props2['midpoint'][0])**2 + 
-                    (props1['midpoint'][1] - props2['midpoint'][1])**2
-                )
-                
-                angle_diff = abs(props1['angle_deg'] - props2['angle_deg'])
-                angle_diff = min(angle_diff, 180 - angle_diff)  # 处理0/180度环绕
-                
-                # 暴力判断：距离和角度都满足阈值就合并
-                if midpoint_dist < self.position_threshold and angle_diff < self.angle_threshold:
-                    similar_lines.append(line2)
-                    used[j] = True
-            
-            # 将相似的线段合并成一条
-            if len(similar_lines) == 1:
-                merged_lines.append(similar_lines[0])
-            else:
-                merged_line = self.simple_fit_single_line(similar_lines)
-                if merged_line:
-                    merged_lines.append(merged_line)
-        
-        return merged_lines
-
-    def simple_fit_single_line(self, lines):
-        """将多条线段简单拟合成一条线"""
-        if not lines:
-            return None
-        
-        # 收集所有端点
-        all_points = []
-        for line in lines:
-            all_points.append(line['properties']['start_point'])
-            all_points.append(line['properties']['end_point'])
-        
-        # 转换为numpy数组
-        points = np.array(all_points)
-        
-        # 找到距离原点最远和最近的两个点作为新线段的端点
-        distances = np.sqrt(points[:, 0]**2 + points[:, 1]**2)
-        
-        # 或者用更简单的方法：找到x+y最小和最大的点
-        sums = points[:, 0] + points[:, 1]
-        min_idx = np.argmin(sums)
-        max_idx = np.argmax(sums)
-        
-        start_point = points[min_idx]
-        end_point = points[max_idx]
-        
-        # 如果两点太近，用最长的原线段
-        if np.linalg.norm(end_point - start_point) < 0.05:
-            longest_line = max(lines, key=lambda x: x['properties']['length'])
-            return longest_line
-        
-        # 转换回图像坐标
-        img_coords = self.cartesian_to_image_coords(
-            np.array([start_point[0], end_point[0]]),
-            np.array([start_point[1], end_point[1]])
-        )
-        
-        # 计算新线段的属性
-        props = self.calculate_line_properties(
-            int(img_coords[0][0]), int(img_coords[1][0]),
-            int(img_coords[0][1]), int(img_coords[1][1])
-        )
-        
-        # 继承最长线段的类型
-        longest_line = max(lines, key=lambda x: x['properties']['length'])
-        line_type = longest_line.get('type', 'unknown')
-        
-        return {
-            'image_coords': (int(img_coords[0][0]), int(img_coords[1][0]), 
-                            int(img_coords[0][1]), int(img_coords[1][1])),
-            'properties': props,
-            'type': line_type
-        }
+    
     def point_to_line_distance(self, point, line_props):
         """Calculate perpendicular distance from point to line"""
         start = np.array(line_props['start_point'])
@@ -956,23 +825,17 @@ class StableRadarLineDetector:
                         
                     props = self.calculate_line_properties(x1, y1, x2, y2)
                     
-                    # 更严格的长度和角度检查以减少误检
+                    # More lenient length check to catch flanges
                     if (props['length'] >= self.min_flange_length_meters and 
                         props['length'] <= self.max_line_length_meters):
                         
-                        # 额外的质量检查：确保线段有足够的点密度
-                        line_length_pixels = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-                        if line_length_pixels >= self.min_line_length:  # 像素级别的长度检查
-                            
-                            current_lines.append({
-                                'image_coords': (x1, y1, x2, y2),
-                                'properties': props
-                            })
+                        current_lines.append({
+                            'image_coords': (x1, y1, x2, y2),
+                            'properties': props
+                        })
                 
-                '''                
-                print(f"Detected {len(current_lines)} valid lines")
-                merged_lines = self.merge_overlapping_lines_advanced(current_lines)
-                print(f"After advanced merging: {len(merged_lines)}")
+                # print(f"Detected {len(current_lines)} valid lines")
+                
                 # Detect H-beam structures
                 h_beams, standalone_flanges, standalone_webs = self.detect_h_beam_structures(current_lines)
                 
@@ -1003,15 +866,7 @@ class StableRadarLineDetector:
                         print(f"Error merging cluster: {e}")
                         longest = max(cluster, key=lambda x: x['properties']['length'])
                         merged_lines.append(longest)
-                '''
-                # print(f"Detected {len(current_lines)} valid lines")
                 
-                # 简单暴力合并相似线段
-                merged_lines = self.simple_merge_similar_lines(current_lines)
-                print(f"After simple merging: {len(merged_lines)} lines")
-                
-                # Detect H-beam structures using merged lines
-                h_beams, standalone_flanges, standalone_webs = self.detect_h_beam_structures(merged_lines)
                 # print(f"After clustering: {len(merged_lines)} lines")
                 
                 # Temporal tracking for stability
@@ -1053,24 +908,12 @@ class StableRadarLineDetector:
             cv2.circle(vis_img, (int(x1), int(y1)), 3, (0, 255, 0), -1)
             cv2.circle(vis_img, (int(x2), int(y2)), 3, (255, 0, 0), -1)
         
-        # 添加边缘检测结果的可视化
-        edges_vis = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
-        
-        # 在占用图像上绘制处理范围边界
-        occupancy_vis = cv2.cvtColor(occupancy_img, cv2.COLOR_GRAY2BGR)
-        center = self.image_size // 2
-        cv2.circle(occupancy_vis, (center, center), self.processing_radius_pixels, (0, 255, 0), 2)
-        
-        # 显示多个窗口以便调试
-        cv2.imshow("Occupancy Image (with range)", occupancy_vis)
-        # cv2.imshow("Edge Detection", edges_vis)
-        cv2.imshow("Detected Lines", vis_img)
-        cv2.waitKey(1)
-        
-        # 可选：保存调试图像
+        # Save images (optional - comment out if not needed)
         # cv2.imwrite('/tmp/radar_occupancy.png', occupancy_img)
         # cv2.imwrite('/tmp/radar_edges.png', edges)
-        # cv2.imwrite('/tmp/radar_lines.png', vis_img) 
+        # cv2.imwrite('/tmp/radar_lines.png', vis_img)
+        cv2.imshow("Detected Hs", vis_img)
+        cv2.waitKey(1) 
 
     def run(self):
         """Main run loop"""

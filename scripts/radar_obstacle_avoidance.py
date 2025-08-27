@@ -76,7 +76,7 @@ class EndEffectorObstacleAvoidance:
         self.last_process_time = rospy.Time.now()
         
         # 调试模式
-        self.debug_mode = False
+        self.debug_mode = True
         
         # self.log_parameters()
     
@@ -110,11 +110,11 @@ class EndEffectorObstacleAvoidance:
             
             self.pose_updated = True
             
-            if self.debug_mode:
-                pos = self.end_effector_pose['position']
-                orient = self.end_effector_pose['orientation']
-                rospy.loginfo_throttle(2.0, f"末端位置: [{pos[0]:.3f}, {pos[1]:.3f}, {pos[2]:.3f}] "
-                                           f"姿态: [{orient[0]:.2f}, {orient[1]:.2f}, {orient[2]:.2f}]°")
+            # if self.debug_mode:
+            #     pos = self.end_effector_pose['position']
+            #     orient = self.end_effector_pose['orientation']
+            #     rospy.loginfo_throttle(2.0, f"末端位置: [{pos[0]:.3f}, {pos[1]:.3f}, {pos[2]:.3f}] "
+            #                                f"姿态: [{orient[0]:.2f}, {orient[1]:.2f}, {orient[2]:.2f}]°")
         
         except Exception as e:
             rospy.logerr(f"解析机械臂状态失败: {e}")
@@ -159,7 +159,7 @@ class EndEffectorObstacleAvoidance:
             self.publish_obstacle_flags(obstacle_results)
             
             # 定期输出统计信息
-            self.log_statistics(current_time, len(points), len(voxelized_points))
+            # self.log_statistics(current_time, len(points), len(voxelized_points))
             
         except Exception as e:
             rospy.logerr(f"处理点云数据时出错: {e}")
@@ -240,8 +240,8 @@ class EndEffectorObstacleAvoidance:
         
         filtered_points = end_effector_points[valid_mask]
         
-        if self.debug_mode and len(filtered_points) != len(end_effector_points):
-            rospy.loginfo_throttle(5.0, f"过滤点云: {len(end_effector_points)} -> {len(filtered_points)}")
+        # if self.debug_mode and len(filtered_points) != len(end_effector_points):
+        #     rospy.loginfo_throttle(5.0, f"过滤点云: {len(end_effector_points)} -> {len(filtered_points)}")
         
         return filtered_points
     
@@ -308,7 +308,13 @@ class EndEffectorObstacleAvoidance:
                 
                 results['min_distances'][region_name] = min_distance
                 results['point_counts'][region_name] = point_count
-                
+                if region_name == 'center':
+                    self.safe_distance = OB_SAFE_DISTANCE - 0.1
+                elif region_name == 'up' or region_name == 'down':
+                    self.safe_distance = OB_SAFE_DISTANCE - 0.1
+                else:
+                    self.safe_distance = OB_SAFE_DISTANCE
+
                 if min_distance < self.safe_distance:
                     results[region_name] = True
         

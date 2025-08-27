@@ -50,11 +50,11 @@ class DemoApp:
         while not self.stopheartthread:
             tcp_pos = self.duco_thread.get_tcp_pose()
             tcp_state = self.duco_thread.get_robot_state()
-
+            empty_state = [0] * 5
             self.tcp_state = tcp_state
             # 发布 ROS topic
             msg = Float64MultiArray()
-            msg.data = tcp_state + tcp_pos
+            msg.data = tcp_state + tcp_pos + empty_state
             self.tcp_pub.publish(msg)
 
             self._stop_event.wait(0.2)

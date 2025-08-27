@@ -3,5 +3,10 @@
     <include file="$(find rplidar_ros)/launch/rplidar_3c1.launch"/>
     <!-- 机械臂主程序 -->
     <node name="duco_control" pkg="duco_control_pkg" type="main1.py" output="screen"> </node>
+    <!-- 雷达点云融合节点 -->
+    <node name="radar_three_cloud" pkg="duco_control_pkg" type="radar_three_cloud.py" output="screen"> </node>
+    <!-- 雷达避障节点 -->
+    <node name="radar_obstacle_avoidance" pkg="duco_control_pkg" type="radar_obstacle_avoidance.py" output="screen"> </node>
+
 </launch>
 
