@@ -30,6 +30,8 @@ in radar_obstacle_avoidance.py：
 读取/obstacle_avoidance/pointcloud，并根据config.py中机械臂运动的坐标系划分区域识别避障，最后输出每个区域的
 bool值到/obstacle_flags作为该区域的避障开关。
 
+位置变化，cv2_H_detecter.py:识别出来的东西其实是延圆心180度顺时针旋转的结果
+
 /Duco_state                        话题： 机械臂状态
 /left_radar/scan                   话题： 左雷达数据
 /left_radar/filtered_scan          话题： 左雷达数据(滤波后)

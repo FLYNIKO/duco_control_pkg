@@ -18,21 +18,21 @@ class StableRadarLineDetector:
         rospy.init_node('stable_radar_line_detector')
         self.debug_mode = DEBUG_MODE
         # Parameters for image conversion
-        self.image_size = 600
+        self.image_size = 800
         self.max_range = 1.0
         self.resolution = self.max_range / (self.image_size / 2)
         
          # 圆形处理范围参数
-        self.processing_radius_meters = 0.5  # 处理半径（米），只处理此范围内的数据
+        self.processing_radius_meters = 0.7  # 处理半径（米），只处理此范围内的数据
         self.processing_radius_pixels = int(self.processing_radius_meters / self.resolution)  # 转换为像素
         
         # Enhanced Hough line detection parameters - 平衡检测能力和精度
-        self.hough_threshold = 12     # 适当提高阈值以减少误检
-        self.min_line_length = 25      # 稍微提高最小线长要求
+        self.hough_threshold = 25     # 适当提高阈值以减少误检
+        self.min_line_length = 40      # 稍微提高最小线长要求
         self.max_line_gap = 50         # 适当减少间隙容忍度
         
         # Separate parameters for short lines (flanges)
-        self.flange_hough_threshold = 12    # 适当提高阈值
+        self.flange_hough_threshold = 14    # 适当提高阈值
         self.flange_min_line_length = 12    # 提高最小线长要求
         self.flange_max_line_gap = 20      # 减少间隙容忍度
         
@@ -48,13 +48,13 @@ class StableRadarLineDetector:
         self.line_id_counter = 0
         
         # Line tracking and stability parameters
-        self.position_threshold = 0.15   # 减少位置阈值以提高精度
-        self.angle_threshold = 12        # 减少角度阈值以提高精度
+        self.position_threshold = 0.17   # 减少位置阈值以提高精度
+        self.angle_threshold = 20        # 减少角度阈值以提高精度
         self.stability_requirement = 3  # 增加稳定性要求以减少误检
         self.max_line_age = 4          # 减少最大线龄
         
         # Advanced filtering parameters
-        self.min_line_length_meters = 0.10  # 适当提高最小线长要求
+        self.min_line_length_meters = 0.15  # 适当提高最小线长要求
         self.min_line_deg = 90
         self.min_flange_length_meters = 0.06 # 适当提高最小法兰长度
         self.max_line_length_meters = 2.2   # 适当减少最大线长
