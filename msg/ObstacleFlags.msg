@@ -3,8 +3,10 @@
 
 # 各区域避障标志
 bool left_front    # 左前区有障碍
+bool left_mid      # 左中区有障碍
 bool left_rear     # 左后区有障碍
 bool right_front   # 右前区有障碍  
+bool right_mid     # 右中区有障碍
 bool right_rear    # 右后区有障碍
 bool center        # 中区有障碍
 bool up            # 上区有障碍

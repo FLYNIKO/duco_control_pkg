@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from re import X
 import rospy
 import numpy as np
 from sensor_msgs.msg import PointCloud2
@@ -63,8 +62,7 @@ class EndEffectorObstacleAvoidance:
         self.threshold_D = OB_THRESHOLD_D # 下区阈值（相对末端向下）
         
         # 前后分界阈值（X坐标）
-        self.threshold_front_mid = OB_THRESHOLD_FRONT_MID  # 前后分界线
-        self.threshold_mid_rear = OB_THRESHOLD_MID_REAR
+        self.threshold_front_rear = OB_THRESHOLD_FRONT_REAR  # 前后分界线
         
         # 前方区域检测范围（末端前方）
         self.forward_min = OB_FORWARD_MIN    # 末端前方最小距离
@@ -272,10 +270,8 @@ class EndEffectorObstacleAvoidance:
         """根据区域划分检测障碍（相对于末端执行器）"""
         results = {
             'left_front': False,
-            'left_mid': False,
             'left_rear': False,
             'right_front': False,
-            'right_mid': False,
             'right_rear': False,
             'center': False,
             'up': False,
@@ -295,13 +291,10 @@ class EndEffectorObstacleAvoidance:
         
         # 区域划分（在末端坐标系中）
         regions = {
-            'left_front': (y < self.threshold_L) & (x < self.threshold_front_mid),  # 左前区
-            'left_mid': (y < self.threshold_L) & (x >= self.threshold_front_mid) & (x < self.threshold_mid_rear),  # 左中区
-            'left_rear': (y < self.threshold_L) & (x >= self.threshold_mid_rear),   # 左后区
-
-            'right_front': (y > self.threshold_R) & (x < self.threshold_front_mid),  # 右前区
-            'right_mid': (y > self.threshold_R) & (x >= self.threshold_front_mid) & (x < self.threshold_mid_rear),  # 右前区
-            'right_rear': (y > self.threshold_R) & (x >= self.threshold_mid_rear),  # 右后区
+            'left_front': (y < self.threshold_L) & (x < self.threshold_front_rear),  # 左前区
+            'left_rear': (y < self.threshold_L) & (x >= self.threshold_front_rear),   # 左后区
+            'right_front': (y > self.threshold_R) & (x < self.threshold_front_rear),  # 右前区
+            'right_rear': (y > self.threshold_R) & (x >= self.threshold_front_rear),  # 右后区
             'center': (np.abs(y) <= self.threshold_M) & (x < self.forward_min) & (x > self.forward_max),  # 末端前方中央
             'up': z > self.threshold_U,  # 末端上方
             'down': z < self.threshold_D  # 末端下方
@@ -334,10 +327,8 @@ class EndEffectorObstacleAvoidance:
         
         # 设置各区域标志
         msg.left_front = results['left_front']
-        msg.left_mid = results['left_mid']
         msg.left_rear = results['left_rear']
         msg.right_front = results['right_front']
-        msg.right_mid = results['right_mid']
         msg.right_rear = results['right_rear']
         msg.center = results['center']
         msg.up = results['up']
@@ -356,8 +347,8 @@ class EndEffectorObstacleAvoidance:
         if self.debug_mode:
             active_regions = []
             region_names = {
-                'left_front': '左前', 'left_mid': '左中前', 'left_rear': '左中后',
-                'right_front': '右前', 'right_mid': '右中前', 'right_rear': '右中后',
+                'left_front': '左前', 'left_rear': '左后',
+                'right_front': '右前', 'right_rear': '右后',
                 'center': '中', 'up': '上', 'down': '下'
             }
             
@@ -380,10 +371,8 @@ class EndEffectorObstacleAvoidance:
         # 创建全部安全的ObstacleFlags消息
         msg = ObstacleFlags()
         msg.left_front = False
-        msg.left_mid = False
         msg.left_rear = False
         msg.right_front = False
-        msg.right_mid = False
         msg.right_rear = False
         msg.center = False
         msg.up = False

@@ -9,7 +9,7 @@ from duco_control_pkg.msg import LineDetectionArray, LineInfo, ObstacleFlags
 from CylinderPaint_duco import CylinderAutoPaint
 from collections import deque
 from config import *
-from dir_dist import DirectionalLaser
+from triple_radar_front_distance import DirectionalLaser
 
 class KeyInputStruct:
     def __init__(self, x0=0, x1=0, y0=0, y1=0, z0=0, z1=0,
@@ -64,7 +64,8 @@ class system_control:
         self.app = app
         self.auto_vel = AUTOSPEED # 自动喷涂速度
         self.vel = DEFAULT_VEL # 机械臂手动末端速度
-        self.ob_vel = 0.4 # 障碍物避障速度
+        self.ob_vel = OB_VELOCITY # 障碍物避障速度
+        self.ob_acc = OB_ACC # 障碍物避障加速度
         self.acc = DEFAULT_ACC # 机械臂末端加速度
         self.aj_pos = [] # 当前关节角度
         self.tcp_pos = [] # 当前末端位姿
@@ -121,8 +122,10 @@ class system_control:
 
         # 障碍物检测相关变量
         self.left_front_obstacle = False
+        self.left_mid_obstacle = False
         self.left_rear_obstacle = False
         self.right_front_obstacle = False
+        self.right_mid_obstacle = False
         self.right_rear_obstacle = False
         self.center_obstacle = False
         self.up_obstacle = False
@@ -133,8 +136,10 @@ class system_control:
         # 障碍物检测过滤队列（连续3帧检测到才认为是真的障碍物）
         self.obstacle_filter_frames = 3  # 需要连续检测到的帧数
         self.left_front_history = deque(maxlen=self.obstacle_filter_frames)
+        self.left_mid_history = deque(maxlen=self.obstacle_filter_frames)
         self.left_rear_history = deque(maxlen=self.obstacle_filter_frames)
         self.right_front_history = deque(maxlen=self.obstacle_filter_frames)
+        self.right_mid_history = deque(maxlen=self.obstacle_filter_frames)
         self.right_rear_history = deque(maxlen=self.obstacle_filter_frames)
         self.center_history = deque(maxlen=self.obstacle_filter_frames)
         self.up_history = deque(maxlen=self.obstacle_filter_frames)
@@ -241,9 +246,9 @@ class system_control:
                     
                     if self.ob_status == 0: # 全向避障
                         self.duco_ob.stop(True)
-                        if (ob_data['left_front'] and ob_data['left_rear']) or (ob_data['right_front'] and ob_data['right_rear']):
+                        if (ob_data['left_mid'] and ob_data['left_rear']) or (ob_data['right_mid'] and ob_data['right_rear']):
                             self.ob_safe_pos()
-                        elif ob_data['left_front'] or ob_data['right_front'] or ob_data['center']:
+                        elif ob_data['left_mid'] or ob_data['right_mid'] or ob_data['center']:
                             self.duco_ob.servoj_pose([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
                             rospy.logwarn("| 检测到障碍物，向后躲避！ |")
                         elif ob_data['up']:
@@ -254,7 +259,7 @@ class system_control:
                             rospy.logwarn("| 检测到下方障碍物，向上躲避！ |")
 
                     elif self.ob_status == 1: # 无避障
-                        obstacle_keys = ['left_front', 'left_rear', 'right_front', 'right_rear', 'center', 'up', 'down']
+                        obstacle_keys = ['left_front', 'left_mid', 'left_rear', 'right_front', 'right_mid', 'right_rear', 'center', 'up', 'down']
                         rospy.loginfo("--------------------------------")
                         for key in obstacle_keys:
                             if ob_data.get(key):
@@ -264,9 +269,9 @@ class system_control:
                     elif self.ob_status == 2: # 自动sync 避障逻辑
                         self.duco_ob.stop(True)
                         if self.paint_motion == 1 or self.paint_motion == 5:
-                            if (ob_data['left_front'] and ob_data['left_rear']) or (ob_data['right_front'] and ob_data['right_rear']):
+                            if (ob_data['left_mid'] and ob_data['left_rear']) or (ob_data['right_mid'] and ob_data['right_rear']):
                                 self.ob_safe_pos()
-                            elif ob_data['left_front'] or ob_data['right_front'] or ob_data['center']:
+                            elif ob_data['left_mid'] or ob_data['right_mid'] or ob_data['center']:
                                 self.duco_ob.servoj_pose([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
                                 rospy.logwarn("| 检测到障碍物，向后躲避！ |")
                             elif ob_data['up']:
@@ -277,9 +282,9 @@ class system_control:
                                 rospy.logwarn("| 检测到下方障碍物，向上躲避！ |")
 
                         elif self.paint_motion == 2 or self.paint_motion == 4:
-                            if (ob_data['left_front'] and ob_data['left_rear']) or (ob_data['right_front'] and ob_data['right_rear']):
+                            if (ob_data['left_mid'] and ob_data['left_rear']) or (ob_data['right_mid'] and ob_data['right_rear']):
                                 self.ob_safe_pos()
-                            elif ob_data['left_front'] or ob_data['right_front']:
+                            elif ob_data['left_mid'] or ob_data['right_mid']:
                                 self.duco_ob.servoj_pose([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
                                 rospy.logwarn("| 检测到障碍物，向后躲避！ |")
                             elif ob_data['up']:
@@ -288,10 +293,11 @@ class system_control:
                             elif ob_data['down']:
                                 self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] + 0.15, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
                                 rospy.logwarn("| 检测到下方障碍物，向上躲避！ |")
+
                         elif self.paint_motion == 3:
-                            if (ob_data['left_front'] and ob_data['left_rear']) or (ob_data['right_front'] and ob_data['right_rear']):
+                            if (ob_data['left_mid'] and ob_data['left_rear']) or (ob_data['right_mid'] and ob_data['right_rear']):
                                 self.ob_safe_pos()
-                            elif ob_data['left_front'] or ob_data['right_front'] or ob_data['center']:
+                            elif ob_data['left_mid'] or ob_data['right_mid'] or ob_data['center']:
                                 self.duco_ob.servoj_pose([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
                                 rospy.logwarn("| 检测到障碍物，向后躲避！ |")
                             elif ob_data['up']:
@@ -473,8 +479,10 @@ class system_control:
         # 处理障碍物标志信息
         # 将当前帧的状态添加到历史队列中
         self.left_front_history.append(msg.left_front)
+        self.left_mid_history.append(msg.left_mid)
         self.left_rear_history.append(msg.left_rear)
         self.right_front_history.append(msg.right_front)
+        self.right_mid_history.append(msg.right_mid)
         self.right_rear_history.append(msg.right_rear)
         self.center_history.append(msg.center)
         self.up_history.append(msg.up)
@@ -482,8 +490,10 @@ class system_control:
         
         # 应用过滤逻辑：只有当连续3帧都检测到障碍物时才设置为true
         self.left_front_obstacle = self._check_continuous_detection(self.left_front_history)
+        self.left_mid_obstacle = self._check_continuous_detection(self.left_mid_history)
         self.left_rear_obstacle = self._check_continuous_detection(self.left_rear_history)
         self.right_front_obstacle = self._check_continuous_detection(self.right_front_history)
+        self.right_mid_obstacle = self._check_continuous_detection(self.right_mid_history)
         self.right_rear_obstacle = self._check_continuous_detection(self.right_rear_history)
         self.center_obstacle = self._check_continuous_detection(self.center_history)
         self.up_obstacle = self._check_continuous_detection(self.up_history)
@@ -516,8 +526,10 @@ class system_control:
         """
         return {
             'left_front': self.left_front_obstacle,
-            'left_rear': self.left_rear_obstacle,
+            'left_mid': self.left_mid_obstacle,
+            'left_rear': self.left_rear_obstacle,   
             'right_front': self.right_front_obstacle,
+            'right_mid': self.right_mid_obstacle,
             'right_rear': self.right_rear_obstacle,
             'center': self.center_obstacle,
             'up': self.up_obstacle,
@@ -533,8 +545,10 @@ class system_control:
         """
         return {
             'left_front': self.left_front_history[-1] if self.left_front_history else False,
+            'left_mid': self.left_mid_history[-1] if self.left_mid_history else False,
             'left_rear': self.left_rear_history[-1] if self.left_rear_history else False,
             'right_front': self.right_front_history[-1] if self.right_front_history else False,
+            'right_mid': self.right_mid_history[-1] if self.right_mid_history else False,
             'right_rear': self.right_rear_history[-1] if self.right_rear_history else False,
             'center': self.center_history[-1] if self.center_history else False,
             'up': self.up_history[-1] if self.up_history else False,
@@ -550,9 +564,11 @@ class system_control:
         """
         return any([
             self.left_front_obstacle,
+            self.left_mid_obstacle,
             self.left_rear_obstacle,
             self.right_front_obstacle,
             self.right_rear_obstacle,
+            self.right_mid_obstacle,
             self.center_obstacle,
             self.up_obstacle,
             self.down_obstacle
@@ -566,7 +582,7 @@ class system_control:
         Returns:
             float: 距离值（米），-1表示无效或超时
         """
-        return self.directional_laser.get_distance(direction)
+        return self.directional_laser.get_front_distance(direction)
     
     def get_all_directional_distances(self):
         """
@@ -574,15 +590,7 @@ class system_control:
         Returns:
             dict: 包含所有方向距离值的字典
         """
-        return self.directional_laser.get_all_distances()
-    
-    def is_directional_data_valid(self):
-        """
-        检查方向性激光雷达数据是否有效
-        Returns:
-            bool: True表示数据有效，False表示数据超时
-        """
-        return self.directional_laser.is_data_valid()
+        return self.directional_laser.get_all_front_distances()
         
         # 读取/topic中的按键输入
     def _keys_callback(self, msg):
@@ -678,7 +686,7 @@ class system_control:
             rospy.sleep(0.05)
 
             # 读取前向激光传感器
-            dist = self.get_directional_distance("front")
+            dist = self.get_directional_distance("right")
             if dist > 0:
                 scan_data.append((tcp_pos[2], dist))  # 记录当前高度和距离值
                 rospy.loginfo(f"scan z={tcp_pos[2]:.3f}m, front={dist:.3f}m")
@@ -709,7 +717,7 @@ class system_control:
             # 移动到目标位置
             self.duco_cobot.servoj_pose(center_pos, self.vel, self.acc, '', '', '', True)
             # 计算当前喷涂距离，并移动到目标喷涂距离
-            dist = self.get_directional_distance("front")
+            dist = self.get_directional_distance("right")
             center_pos[0] -= dist - self.painting_dist + 0.2
             self.duco_cobot.servoj_pose(center_pos, self.vel, self.acc, '', '', '', True)
             self.paint_center = center_pos
@@ -846,6 +854,7 @@ class system_control:
                 else:
                     self.ob_status = 2
                 if self.ob_flag:
+                    rospy.sleep(1)
                     continue
                 tcp_pos = self.duco_cobot.get_tcp_pose()
                 key_input = self.get_key_input()
@@ -859,7 +868,7 @@ class system_control:
                 # 喷涂上下翼板
                 if (self.paint_motion == 2 or self.paint_motion == 4) and (self.last_H_time - time.time() < 1):
                     target_dist = self.target_dist_in_flange
-                    now_dist = self.get_directional_distance("front")
+                    now_dist = (self.get_directional_distance("left") + self.get_directional_distance("right")) / 2
                     v2 = self.pid_dist_control(now_dist, target_dist, dt)
                     rospy.loginfo(f"v2: {v2}\ntarget_dist_in_flange: {self.target_dist_in_flange}, \ndistance_now: {now_dist}")
 
@@ -872,7 +881,7 @@ class system_control:
                 # 喷涂中腹板
                 elif self.paint_motion == 3 and (self.last_H_time - time.time() < 1):
                     target_dist = self.target_dist_in_web
-                    now_dist = self.get_directional_distance("front")
+                    now_dist = (self.get_directional_distance("left") + self.get_directional_distance("right")) / 2
                     v2 = self.pid_dist_control(now_dist, target_dist, dt)
                     rospy.loginfo(f"v2: {v2}\ntarget_dist_web: {self.target_dist_in_web}, \ndistance_now: {now_dist}")
                 else:
@@ -984,13 +993,13 @@ class system_control:
                 elif key_input.x0:
                     self.ob_status = 1
                     self.duco_cobot.speedl([0, 0, v2, 0, 0, 0],self.acc ,-1, False)
-                    now_dist = self.get_directional_distance("front")
+                    now_dist = self.get_directional_distance("right")
                     rospy.loginfo(f"distance_now: {now_dist}")
                 #机械臂末端向  后
                 elif key_input.x1:
                     self.ob_status = 1
                     self.duco_cobot.speedl([0, 0, -v2, 0, 0, 0],self.acc ,-1, False)
-                    now_dist = self.get_directional_distance("front")
+                    now_dist = self.get_directional_distance("right")
                     rospy.loginfo(f"distance_now: {now_dist}")
                 #机械臂末端向  右
                 elif key_input.y1:
@@ -1004,13 +1013,13 @@ class system_control:
                 elif key_input.z1: 
                     self.ob_status = 1
                     self.duco_cobot.speedl([0, v1, 0, 0, 0, 0],self.acc ,-1, False)
-                    now_dist = self.get_directional_distance("front")
+                    now_dist = self.get_directional_distance("right")
                     rospy.loginfo(f"distance_now: {now_dist}")
                 #机械臂末端向  下
                 elif key_input.z0:
                     self.ob_status = 1
                     self.duco_cobot.speedl([0, -v1, 0, 0, 0, 0],self.acc ,-1, False)
-                    now_dist = self.get_directional_distance("front")
+                    now_dist = self.get_directional_distance("right")
                     rospy.loginfo(f"distance_now: {now_dist}")
                 #初始化位置
                 elif key_input.init:                    
