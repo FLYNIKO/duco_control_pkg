@@ -86,8 +86,8 @@ class system_control:
         self.dist_history = deque(maxlen=5) # 滤波队列
 
 
-        self.scan_range = 0.6
-        self.step_size = 0.01
+        self.scan_range = 0.7
+        self.step_size = 0.02
         self.min_jump_threshold = 0.05
         self.center_z = 0.0
         self.center_x = 0.0
@@ -100,7 +100,7 @@ class system_control:
         self.paint_high = [] # 喷涂上姿态
         self.paint_low = [] # 喷涂下姿态
 
-        self.painting_dist = 0 # 喷涂距离
+
         self.web_height = 0 # 钢梁高度
         self.flange_up_width = 0 # 上翼子板宽度
         self.flange_down_width = 0 # 下翼子板宽度
@@ -112,7 +112,10 @@ class system_control:
         # 目标线检测相关变量
         self.target_dist_in_surface = 0.0
         self.target_dist_in_flange = 0.0
+        self.painting_dist = 0 # 喷涂距离
         self.target_dist_in_web = self.painting_dist
+        self.surface_painting_dist = 0 # 钢梁表面喷涂距离
+        self.flange_painting_dist = 0 # 翼子板喷涂距离
         self.surface_distance = 0.0
         self.surface_angle_deg = 0.0
 
@@ -374,7 +377,7 @@ class system_control:
             avg_line.angle_deg = sum(msg.lines[line_idx].angle_deg for msg in self.H_detection_history) / 3
             
             avg_msg.lines.append(avg_line)
-            
+            rospy.loginfo("3次H完成处理")
         return avg_msg
 
     def _process_H_detection(self, msg):
@@ -387,42 +390,38 @@ class system_control:
 
         if self.find_mode:
             tcp_pos = self.duco_H.get_tcp_pose()
+            self.H_find_flag = True
+            for line in msg.lines:
+                if line.type == 0:
+                    web_line = line
+                elif line.type == 1:
+                    if line.start_point.z > 0:
+                        up_line = line
+                    elif line.start_point.z < 0:
+                        down_line = line
 
-            if len(msg.lines) == 3:
-                self.H_find_flag = True
-                for line in msg.lines:
-                    if line.type == 0:
-                        web_line = line
-                    elif line.type == 1:
-                        if line.start_point.z > 0:
-                            up_line = line
-                        elif line.start_point.z < 0:
-                            down_line = line
+            if web_line is not None:
+                if web_line.start_point.z > web_line.end_point.z:
+                    self.start_z = web_line.start_point.z
+                    self.web_length = web_line.length
+                    self.web_distance = web_line.distance
+                    self.web_top_point = [web_line.start_point.x + LEFT_RADAR_OFFSET[2] + tcp_pos[0], web_line.start_point.y + LEFT_RADAR_OFFSET[0] + tcp_pos[1], web_line.start_point.z + LEFT_RADAR_OFFSET[1] + tcp_pos[2]]
+                
+                else:
+                    self.start_z = web_line.end_point.z
+                    self.web_length = web_line.length
+                    self.web_distance = web_line.distance
+                    self.web_top_point = [web_line.end_point.x + LEFT_RADAR_OFFSET[2] + tcp_pos[0], web_line.end_point.y + LEFT_RADAR_OFFSET[0] + tcp_pos[1], web_line.end_point.z + LEFT_RADAR_OFFSET[1] + tcp_pos[2]]
 
-                if web_line is not None:
-                    if web_line.start_point.z > web_line.end_point.z:
-                        self.start_z = web_line.start_point.z
-                        self.web_length = web_line.length
-                        self.web_distance = web_line.distance
-                        self.web_top_point = [web_line.start_point.x + LEFT_RADAR_OFFSET[2] + tcp_pos[0], web_line.start_point.y + LEFT_RADAR_OFFSET[0] + tcp_pos[1], web_line.start_point.z + LEFT_RADAR_OFFSET[1] + tcp_pos[2]]
-                    
-                    else:
-                        self.start_z = web_line.end_point.z
-                        self.web_length = web_line.length
-                        self.web_distance = web_line.distance
-                        self.web_top_point = [web_line.end_point.x + LEFT_RADAR_OFFSET[2] + tcp_pos[0], web_line.end_point.y + LEFT_RADAR_OFFSET[0] + tcp_pos[1], web_line.end_point.z + LEFT_RADAR_OFFSET[1] + tcp_pos[2]]
-
-                    
-                    self.web_height = web_line.length
-                    
-                if up_line is not None:
-                    self.flange_up_width = up_line.length
-                    
-                if down_line is not None:
-                    self.flange_down_width = down_line.length
-            else:
-                self.H_find_flag = False
-
+                
+                self.web_height = web_line.length
+                
+            if up_line is not None:
+                self.flange_up_width = up_line.length
+                
+            if down_line is not None:
+                self.flange_down_width = down_line.length
+            rospy.loginfo("有数据")
         else:
             if self.position_flag:
                 tcp_pos = self.duco_H.get_tcp_pose()
@@ -437,8 +436,8 @@ class system_control:
                                 down_line = line
 
                     if web_line is not None:
-                        self.target_dist_in_flange = self.painting_dist - abs(abs(self.paint_high[0]) - abs(self.paint_center[0]))
-                        self.distance_to_web = abs(web_line.start_point.x - tcp_pos[0])
+                        self.distance_to_web = abs(web_line.start_point.x)
+                        
                 else:
                     self.distance_to_web = -1
 
@@ -457,7 +456,7 @@ class system_control:
         
         if target_line is not None and self.position_flag:
             # 提取 distance 和 angle_deg
-            self.surface_distance = target_line.distance
+            self.surface_distance = abs(target_line.start_point.x)
             self.surface_angle_deg = target_line.angle_deg
             self.target_dist_in_surface = self.painting_dist - abs(abs(self.paint_top[0]) - abs(self.paint_center[0]))
 
@@ -718,10 +717,10 @@ class system_control:
         # 设置寻找模式
         self.find_mode = True
         rospy.loginfo(" |-| 进入寻找模式，等待收集H检测信息...")
-        
+        rospy.sleep(5)
         # 第二步：等待H_find_flag为True
         start_time = time.time()
-        while not self.H_find_flag and self.find_mode:
+        while not self.H_find_flag:
             if self.emergency_stop_flag:
                 rospy.logwarn("检测到急停信号，停止寻找钢梁中心位置！")
                 self.find_mode = False
@@ -732,12 +731,12 @@ class system_control:
             #     return
             
             # 检查是否超时（10秒）
-            if time.time() - start_time > 10:
-                rospy.logwarn(" |-| 等待H检测处理结果超时（10秒），无法寻找喷涂位姿！")
+            if time.time() - start_time > 60:
+                rospy.logwarn(" |-| 等待H检测处理结果超时（60秒），无法寻找喷涂位姿！")
                 self.find_mode = False
                 return
                 
-            rospy.sleep(0.1)  # 短暂等待，避免占用过多CPU
+            rospy.sleep(0.01)  # 短暂等待，避免占用过多CPU
         
         if not self.find_mode:
             return
@@ -765,33 +764,36 @@ class system_control:
         web_bottom_x = web_top_x
         web_bottom_z = web_top_z - self.web_height
         print(f"web_top_x: {web_top_x}, web_top_z: {web_top_z}")
-
+        self.surface_painting_dist = self.painting_dist
+        self.flange_painting_dist = self.painting_dist - 0.2
         # 喷涂上表面
         self.paint_top = [
-            (self.point_on_circle(web_top_x, web_top_z, self.painting_dist, self.painting_deg_surface)[0]),
+            (self.point_on_circle(web_top_x, web_top_z, self.surface_painting_dist, self.painting_deg_surface)[0]),
             tcp_pos[1],
-            (self.point_on_circle(web_top_x, web_top_z, self.painting_dist, self.painting_deg_surface)[1]),
+            (self.point_on_circle(web_top_x, web_top_z, self.surface_painting_dist, self.painting_deg_surface)[1]),
             tcp_pos[3], tcp_pos[4], tcp_pos[5]] 
         # 喷涂上翼面
         self.paint_low = [
-            (self.point_on_circle(web_top_x, web_top_z, self.painting_dist, -self.painting_deg_flange)[0]),
+            (self.point_on_circle(web_top_x, web_top_z, self.flange_painting_dist, -self.painting_deg_flange)[0]),
             tcp_pos[1],
-            (self.point_on_circle(web_top_x, web_top_z, self.painting_dist, -self.painting_deg_flange)[1]),
+            (self.point_on_circle(web_top_x, web_top_z, self.flange_painting_dist, -self.painting_deg_flange)[1]),
             tcp_pos[3], tcp_pos[4], tcp_pos[5]] 
 
         # 喷涂下表面
         self.paint_bottom = [
-            (self.point_on_circle(web_bottom_x, web_bottom_z, self.painting_dist, -self.painting_deg_surface)[0]),
+            (self.point_on_circle(web_bottom_x, web_bottom_z, self.surface_painting_dist, -self.painting_deg_surface)[0]),
             tcp_pos[1],
-            (self.point_on_circle(web_bottom_x, web_bottom_z, self.painting_dist, -self.painting_deg_surface)[1]),
+            (self.point_on_circle(web_bottom_x, web_bottom_z, self.surface_painting_dist, -self.painting_deg_surface)[1]),
             tcp_pos[3], tcp_pos[4], tcp_pos[5]]
         # 喷涂下翼面
         self.paint_high = [
-            (self.point_on_circle(web_bottom_x, web_bottom_z, self.painting_dist, self.painting_deg_flange)[0]),
+            (self.point_on_circle(web_bottom_x, web_bottom_z, self.flange_painting_dist, self.painting_deg_flange)[0]),
             tcp_pos[1],
-            (self.point_on_circle(web_bottom_x, web_bottom_z, self.painting_dist, self.painting_deg_flange)[1]),
+            (self.point_on_circle(web_bottom_x, web_bottom_z, self.flange_painting_dist, self.painting_deg_flange)[1]),
             tcp_pos[3], tcp_pos[4], tcp_pos[5]] 
 
+        self.target_dist_in_flange = self.painting_dist - abs(abs(self.paint_high[0]) - abs(self.paint_center[0]))
+        self.target_dist_in_web = self.painting_dist
         rospy.loginfo("------ |-| 已找到5个喷涂位姿，选择位置开始喷涂！--------\n")
         rospy.loginfo("   ↓       喷涂上表面位姿： %s" % self.paint_top)
         rospy.loginfo("===== ↙    喷涂下翼面位姿： %s" % self.paint_high)
@@ -857,19 +859,28 @@ class system_control:
                 # 喷涂上下翼板
                 if (self.paint_motion == 2 or self.paint_motion == 4) and (self.last_H_time - time.time() < 1):
                     target_dist = self.target_dist_in_flange
-                    v2 = self.pid_dist_control(self.get_directional_distance("front"), target_dist, dt)
+                    now_dist = self.get_directional_distance("front")
+                    v2 = self.pid_dist_control(now_dist, target_dist, dt)
+                    rospy.loginfo(f"v2: {v2}\ntarget_dist_in_flange: {self.target_dist_in_flange}, \ndistance_now: {now_dist}")
+
                 # 喷涂上下表面
                 elif (self.paint_motion == 1 or self.paint_motion == 5) and (self.last_line_time - time.time() < 1):
                     target_dist = self.target_dist_in_surface
-                    v2 = self.pid_dist_control(self.surface_distance, target_dist, dt)
+                    now_dist = self.surface_distance
+                    v2 = self.pid_dist_control(now_dist, target_dist, dt)
+                    rospy.loginfo(f"v2: {v2}\ntarget_dist_in_surface: {self.target_dist_in_surface}, \ndistance_now: {now_dist}")
                 # 喷涂中腹板
                 elif self.paint_motion == 3 and (self.last_H_time - time.time() < 1):
                     target_dist = self.target_dist_in_web
-                    v2 = self.pid_dist_control(self.get_directional_distance("front"), target_dist, dt)
+                    now_dist = self.get_directional_distance("front")
+                    v2 = self.pid_dist_control(now_dist, target_dist, dt)
+                    rospy.loginfo(f"v2: {v2}\ntarget_dist_web: {self.target_dist_in_web}, \ndistance_now: {now_dist}")
                 else:
                     v2 = 0.0
-                rospy.logdebug("v2: %f" % v2)
+                # rospy.logdebug("v2: %f" % v2)
                 self.duco_cobot.speedl([0, 0, v2, 0, 0, 0], self.acc * 0.9, -1, False)
+                # self.duco_cobot.speedl([0, 0, 0, 0, 0, 0], self.acc * 0.9, -1, False)
+
 
         rospy.loginfo("-----退出自动模式-----")
 
@@ -973,10 +984,14 @@ class system_control:
                 elif key_input.x0:
                     self.ob_status = 1
                     self.duco_cobot.speedl([0, 0, v2, 0, 0, 0],self.acc ,-1, False)
+                    now_dist = self.get_directional_distance("front")
+                    rospy.loginfo(f"distance_now: {now_dist}")
                 #机械臂末端向  后
                 elif key_input.x1:
                     self.ob_status = 1
                     self.duco_cobot.speedl([0, 0, -v2, 0, 0, 0],self.acc ,-1, False)
+                    now_dist = self.get_directional_distance("front")
+                    rospy.loginfo(f"distance_now: {now_dist}")
                 #机械臂末端向  右
                 elif key_input.y1:
                     self.ob_status = 1
@@ -989,10 +1004,14 @@ class system_control:
                 elif key_input.z1: 
                     self.ob_status = 1
                     self.duco_cobot.speedl([0, v1, 0, 0, 0, 0],self.acc ,-1, False)
+                    now_dist = self.get_directional_distance("front")
+                    rospy.loginfo(f"distance_now: {now_dist}")
                 #机械臂末端向  下
                 elif key_input.z0:
                     self.ob_status = 1
                     self.duco_cobot.speedl([0, -v1, 0, 0, 0, 0],self.acc ,-1, False)
+                    now_dist = self.get_directional_distance("front")
+                    rospy.loginfo(f"distance_now: {now_dist}")
                 #初始化位置
                 elif key_input.init:                    
                     self.ob_status = 1

@@ -24,10 +24,10 @@ DEBUG_MODE = True # 是否显示openCV调试窗口
 AUTOSPEED = 0.2 # 自动喷涂速度
 DEFAULT_VEL = 0.2 # 机械臂末端手动速度
 DEFAULT_ACC = 0.8 # 机械臂末端加速度
-KP = 0.005
+KP = 0.5
 KI = 0.0
-KD = 0.0001
-DEADZONE = 20 # PID死区 (mm)
+KD = 0.01
+DEADZONE = 0.02 # PID死区 (mm)
 
 PAINTDEG = 90 # 喷涂角度(圆柱)
 PAINTWIDTH = 0.15 # 喷涂宽度(圆柱)

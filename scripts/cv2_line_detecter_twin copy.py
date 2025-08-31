@@ -21,34 +21,34 @@ class SeparateRadarLineDetector:
         self.debug_mode = DEBUG_MODE
         # Parameters for image conversion
         self.image_size = 800  # 适中的图像尺寸
-        self.max_range = 2      # 适中的范围
+        self.max_range = 1      # 适中的范围
         self.resolution = self.max_range / (self.image_size / 2)
         
         # Enhanced Hough line detection parameters (保持原有准确的参数)
         self.hough_threshold = 25
         self.min_line_length = 40
-        self.max_line_gap = 15
+        self.max_line_gap = 40
         
         # Edge detection parameters
-        self.canny_low = 30
-        self.canny_high = 100
+        self.canny_low = 10
+        self.canny_high = 90
         self.gaussian_kernel = 3
         
         # Stability parameters
-        self.temporal_buffer_size = 5
+        self.temporal_buffer_size = 3  # 减少从5到3
         self.line_id_counter = 0
         
         # Line tracking and stability parameters
-        self.position_threshold = 0.3
-        self.angle_threshold = 10
-        self.stability_requirement = 5
-        self.max_line_age = 10
+        self.position_threshold = 0.5
+        self.angle_threshold = 20
+        self.stability_requirement = 2  # 减少从3到2，更快达到稳定
+        self.max_line_age = 5
         
         # Advanced filtering parameters
-        self.min_line_length_meters = 0.4
+        self.min_line_length_meters = 0.15
         self.max_line_length_meters = 8.0
-        self.angle_tolerance_deg = 80
-        self.density_threshold = 0.7
+        self.angle_tolerance_deg = 75
+        self.density_threshold = 0.6
         
         # 雷达间距参数（可调节）
         self.radar_separation = abs(LEFT_RADAR_OFFSET[0]) + abs(RIGHT_RADAR_OFFSET[0])  # 两雷达间距离，默认1.0米
@@ -436,6 +436,7 @@ class SeparateRadarLineDetector:
         self.radar_configs[radar_name]['line_history'].append(current_lines)
         
         if len(self.radar_configs[radar_name]['line_history']) < self.stability_requirement:
+            rospy.loginfo(f"{radar_name} radar: Not enough history yet ({len(self.radar_configs[radar_name]['line_history'])}/{self.stability_requirement})")
             return []  # Not enough history yet
         
         # Find consistently detected lines
@@ -527,7 +528,59 @@ class SeparateRadarLineDetector:
                 point.z = 0.0
                 marker.points.append(point)
         
-        # pub.publish(marker)
+        pub.publish(marker)
+
+    def publish_current_lines(self, current_lines, radar_name):
+        """发布当前检测到的线（即使不稳定）"""
+        pub = (self.left_marker_pub if radar_name == 'left' 
+               else self.right_marker_pub)
+        
+        marker_array = MarkerArray()
+        
+        # Clear previous markers
+        delete_marker = Marker()
+        delete_marker.action = Marker.DELETEALL
+        marker_array.markers.append(delete_marker)
+        
+        for i, line in enumerate(current_lines):
+            # Main line marker
+            line_marker = Marker()
+            line_marker.header.frame_id = self.radar_configs[radar_name]['frame_id']
+            line_marker.header.stamp = rospy.Time.now()
+            line_marker.ns = f"{radar_name}_current_lines"
+            line_marker.id = i
+            line_marker.type = Marker.LINE_STRIP
+            line_marker.action = Marker.ADD
+            
+            line_marker.scale.x = 0.06  # 稍细的线条表示不稳定
+            
+            # 使用不同颜色表示不稳定状态
+            if radar_name == 'left':
+                line_marker.color.r = 1.0
+                line_marker.color.g = 0.5
+                line_marker.color.b = 0.0  # 橙色
+            else:
+                line_marker.color.r = 0.5
+                line_marker.color.g = 0.0
+                line_marker.color.b = 1.0  # 紫色
+            
+            line_marker.color.a = 0.6  # 半透明
+            
+            # Add points
+            start_point = Point()
+            start_point.x = line['properties']['start_point'][0]
+            start_point.y = line['properties']['start_point'][1]
+            start_point.z = 0.0
+            
+            end_point = Point()
+            end_point.x = line['properties']['end_point'][0]
+            end_point.y = line['properties']['end_point'][1]
+            end_point.z = 0.0
+            
+            line_marker.points = [start_point, end_point]
+            marker_array.markers.append(line_marker)
+        
+        pub.publish(marker_array)
 
     def publish_stable_lines(self, radar_name):
         """Publish stable lines for a single radar"""
@@ -609,7 +662,7 @@ class SeparateRadarLineDetector:
                               f"S:{stability_score}")
             marker_array.markers.append(text_marker)
         
-        # pub.publish(marker_array)
+        pub.publish(marker_array)
 
     def process_single_radar(self, scan_msg, radar_name):
         """处理单个雷达的数据"""
@@ -703,9 +756,17 @@ class SeparateRadarLineDetector:
                 stable_lines = self.track_lines_temporally(merged_lines, radar_name)
                 self.update_stable_lines(stable_lines, radar_name)
                 
+                # 调试输出
+                rospy.loginfo(f"{radar_name} radar: {len(merged_lines)} lines detected, {len(stable_lines)} stable")
+                
                 # 发布结果（使用中央坐标系的点）
                 self.publish_scan_points(scan_points_center, radar_name)
                 self.publish_stable_lines(radar_name)
+                
+                # 临时发布当前检测到的线（即使不稳定）
+                if len(merged_lines) > 0:
+                    self.publish_current_lines(merged_lines, radar_name)
+                
                 if self.debug_mode: 
                     self.save_debug_images(occupancy_img, edges, merged_lines, radar_name)
                 
@@ -736,7 +797,7 @@ class SeparateRadarLineDetector:
         right_lines = self.radar_configs['right']['stable_lines']
 
         # 检查条件：两个雷达都只有一条稳定线
-        if len(left_lines) == 1 and len(right_lines) == 1:
+        if len(left_lines) == 2 and len(right_lines) == 2:
             left_line = left_lines[0]
             right_line = right_lines[0]
             
@@ -784,7 +845,7 @@ class SeparateRadarLineDetector:
                     temp_line['id'] = self.radar_configs['left']['line_id_counter']
                     self.radar_configs['left']['line_id_counter'] += 1
                 all_lines_to_publish.append(temp_line)
-                
+                rospy.loginfo("===yes in left")
             for line in right_lines:
                 # 复制一份以避免修改原始数据
                 temp_line = line.copy()
@@ -792,6 +853,8 @@ class SeparateRadarLineDetector:
                     temp_line['id'] = self.radar_configs['right']['line_id_counter']
                     self.radar_configs['right']['line_id_counter'] += 1
                 all_lines_to_publish.append(temp_line)
+                rospy.loginfo("===yes in right")
+
                 
             all_lines_to_publish.append(connection_line_info) # 添加连接线
             
@@ -907,7 +970,7 @@ class SeparateRadarLineDetector:
             
             marker_array.markers.append(point_marker)
         
-        # self.connection_line_pub.publish(marker_array)
+        self.connection_line_pub.publish(marker_array)
 
     def clear_connection_line(self):
         """清除连接线可视化"""
@@ -915,7 +978,7 @@ class SeparateRadarLineDetector:
         delete_marker = Marker()
         delete_marker.action = Marker.DELETEALL
         marker_array.markers.append(delete_marker)
-        # self.connection_line_pub.publish(marker_array)
+        self.connection_line_pub.publish(marker_array)
 
     def save_debug_images(self, occupancy_img, edges, lines, radar_name):
         """保存调试图像显示检测过程"""
