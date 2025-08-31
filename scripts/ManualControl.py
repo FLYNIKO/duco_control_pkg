@@ -117,6 +117,7 @@ class system_control:
         self.target_dist_in_web = self.painting_dist
         self.surface_painting_dist = 0 # 钢梁表面喷涂距离
         self.flange_painting_dist = 0 # 翼子板喷涂距离
+        self.flange_painting_dist_adjust = 0.2 # 翼子板喷涂距离调整
         self.surface_distance = 0.0
         self.surface_angle_deg = 0.0
 
@@ -134,7 +135,7 @@ class system_control:
         self.safe_distance = 0.0
         
         # 障碍物检测过滤队列（连续3帧检测到才认为是真的障碍物）
-        self.obstacle_filter_frames = 3  # 需要连续检测到的帧数
+        self.obstacle_filter_frames = 1  # 需要连续检测到的帧数
         self.left_front_history = deque(maxlen=self.obstacle_filter_frames)
         self.left_mid_history = deque(maxlen=self.obstacle_filter_frames)
         self.left_rear_history = deque(maxlen=self.obstacle_filter_frames)
@@ -233,6 +234,7 @@ class system_control:
         self._ob_event = threading.Event()
         self.duco_ob = DucoCobot(self.ip, PORT)
         self.duco_ob.open()
+        rospy.loginfo("ob_start")
         while self.sysrun and not rospy.is_shutdown():
             if time.time() - self.last_ob_time > TIMEOUT:
                 rospy.logwarn("| 障碍物检测超时，请检查传感器连接，此时无法避障！ |")
@@ -242,23 +244,30 @@ class system_control:
                 ob_data = self.get_obstacle_status()
                 tcp_pos = self.duco_ob.get_tcp_pose()
                 if self.is_obstacle_detected():
-                    self.ob_flag = True
                     
                     if self.ob_status == 0: # 全向避障
+                        self.ob_flag = True
                         self.duco_ob.stop(True)
                         if (ob_data['left_mid'] and ob_data['left_rear']) or (ob_data['right_mid'] and ob_data['right_rear']):
                             self.ob_safe_pos()
                         elif ob_data['left_mid'] or ob_data['right_mid'] or ob_data['center']:
-                            self.duco_ob.servoj_pose([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
+                            # self.duco_ob.servoj_pose([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, '', '', '', True)
+                            self.duco_ob.movel([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, 0, '', '', '', False)
+
                             rospy.logwarn("| 检测到障碍物，向后躲避！ |")
                         elif ob_data['up']:
-                            self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] - 0.1, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
+                           #  self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] - 0.1, self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, '', '', '', True)
+                            self.duco_ob.movel([tcp_pos[0], tcp_pos[1], tcp_pos[2] - 0.1, self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, 0, '', '', '', False)
+
                             rospy.logwarn("| 检测到上方障碍物障碍物，向下躲避！ |")
                         elif ob_data['down']:
-                            self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] + 0.1, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
+                            # self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] + 0.1, self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, '', '', '', True)
+                            self.duco_ob.movel([tcp_pos[0], tcp_pos[1], tcp_pos[2] + 0.1, self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, 0, '', '', '', False)
+
                             rospy.logwarn("| 检测到下方障碍物，向上躲避！ |")
 
                     elif self.ob_status == 1: # 无避障
+                        self.ob_flag = True
                         obstacle_keys = ['left_front', 'left_mid', 'left_rear', 'right_front', 'right_mid', 'right_rear', 'center', 'up', 'down']
                         rospy.loginfo("--------------------------------")
                         for key in obstacle_keys:
@@ -270,46 +279,69 @@ class system_control:
                         self.duco_ob.stop(True)
                         if self.paint_motion == 1 or self.paint_motion == 5:
                             if (ob_data['left_mid'] and ob_data['left_rear']) or (ob_data['right_mid'] and ob_data['right_rear']):
+                                self.ob_flag = True
                                 self.ob_safe_pos()
                             elif ob_data['left_mid'] or ob_data['right_mid'] or ob_data['center']:
-                                self.duco_ob.servoj_pose([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
+                                self.ob_flag = True
+                                # self.duco_ob.servoj_pose([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, '', '', '', True)
+                                self.duco_ob.movel([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, 0, '', '', '', False)
                                 rospy.logwarn("| 检测到障碍物，向后躲避！ |")
-                            elif ob_data['up']:
-                                self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] - 0.15, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
-                                rospy.logwarn("| 检测到上方障碍物障碍物，向下躲避！ |")
-                            elif ob_data['down']:
-                                self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] + 0.15, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
-                                rospy.logwarn("| 检测到下方障碍物，向上躲避！ |")
+                            # elif ob_data['up']:
+                            #     self.ob_flag = True
+                            #     self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] - 0.15, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.ob_acc, '', '', '', True)
+                            #     rospy.logwarn("| 检测到上方障碍物障碍物，向下躲避！ |")
+                            # elif ob_data['down']:
+                            #     self.ob_flag = True
+                            #     self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] + 0.15, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.ob_acc, '', '', '', True)
+                            #     rospy.logwarn("| 检测到下方障碍物，向上躲避！ |")
+                            else:
+                                self.ob_flag = False
 
                         elif self.paint_motion == 2 or self.paint_motion == 4:
                             if (ob_data['left_mid'] and ob_data['left_rear']) or (ob_data['right_mid'] and ob_data['right_rear']):
+                                self.ob_flag = True
                                 self.ob_safe_pos()
                             elif ob_data['left_mid'] or ob_data['right_mid']:
-                                self.duco_ob.servoj_pose([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
+                                self.ob_flag = True
+                                # self.duco_ob.servoj_pose([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, '', '', '', True)
+                                self.duco_ob.movel([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, 0, '', '', '', False)
                                 rospy.logwarn("| 检测到障碍物，向后躲避！ |")
-                            elif ob_data['up']:
-                                self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] - 0.15, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
-                                rospy.logwarn("| 检测到上方障碍物障碍物，向下躲避！ |")
-                            elif ob_data['down']:
-                                self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] + 0.15, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
-                                rospy.logwarn("| 检测到下方障碍物，向上躲避！ |")
+                            # elif ob_data['up']:
+                            #     self.ob_flag = True
+                            #     self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] - 0.15, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.ob_acc, '', '', '', True)
+                            #     rospy.logwarn("| 检测到上方障碍物障碍物，向下躲避！ |")
+                            # elif ob_data['down']:
+                            #     self.ob_flag = True
+                            #     self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] + 0.15, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.ob_acc, '', '', '', True)
+                            #     rospy.logwarn("| 检测到下方障碍物，向上躲避！ |")
+                            else:
+                                self.ob_flag = False
 
                         elif self.paint_motion == 3:
                             if (ob_data['left_mid'] and ob_data['left_rear']) or (ob_data['right_mid'] and ob_data['right_rear']):
+                                self.ob_flag = True
                                 self.ob_safe_pos()
                             elif ob_data['left_mid'] or ob_data['right_mid'] or ob_data['center']:
-                                self.duco_ob.servoj_pose([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
+                                self.ob_flag = True
+                                # self.duco_ob.servoj_pose([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, '', '', '', True)
+                                self.duco_ob.movel([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, 0, '', '', '', False)
                                 rospy.logwarn("| 检测到障碍物，向后躲避！ |")
-                            elif ob_data['up']:
-                                self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] - 0.15, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
-                                rospy.logwarn("| 检测到上方障碍物障碍物，向下躲避！ |")
-                            elif ob_data['down']:
-                                self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] + 0.15, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.acc, '', '', '', True)
-                                rospy.logwarn("| 检测到下方障碍物，向上躲避！ |")
+                            # elif ob_data['up']:
+                            #     self.ob_flag = True
+                            #     self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] - 0.15, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.ob_acc, '', '', '', True)
+                            #     rospy.logwarn("| 检测到上方障碍物障碍物，向下躲避！ |")
+                            # elif ob_data['down']:
+                            #     self.ob_flag = True
+                            #     self.duco_ob.servoj_pose([tcp_pos[0], tcp_pos[1], tcp_pos[2] + 0.15, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.ob_vel, self.ob_acc, '', '', '', True)
+                            #     rospy.logwarn("| 检测到下方障碍物，向上躲避！ |")
+                            else:
+                                self.ob_flag = False
+                        
+
                 else:
                     self.ob_flag = False
-
-            self._ob_event.wait(0.5)
+            
+            rospy.sleep(0.5)
 
     def get_cylinder_param(self):
         # TODO: 获取圆柱圆心坐标及圆柱半径
@@ -390,11 +422,8 @@ class system_control:
         """
         处理H检测信息的核心逻辑（原来的处理代码）
         """
-        web_line = None
-        up_line = None
-        down_line = None
-
         if self.find_mode:
+            rospy.loginfo("start process")
             tcp_pos = self.duco_H.get_tcp_pose()
             self.H_find_flag = True
             for line in msg.lines:
@@ -725,6 +754,7 @@ class system_control:
         # 设置寻找模式
         self.find_mode = True
         rospy.loginfo(" |-| 进入寻找模式，等待收集H检测信息...")
+        self.find_mode = True
         rospy.sleep(5)
         # 第二步：等待H_find_flag为True
         start_time = time.time()
@@ -744,7 +774,7 @@ class system_control:
                 self.find_mode = False
                 return
                 
-            rospy.sleep(0.01)  # 短暂等待，避免占用过多CPU
+            rospy.sleep(0.001)  # 短暂等待，避免占用过多CPU
         
         if not self.find_mode:
             return
@@ -767,13 +797,13 @@ class system_control:
         self.paint_center = tcp_pos # 喷涂中心点
 
         # 喷涂上表面
-        web_top_x = tcp_pos[0] - self.painting_dist
+        web_top_x = tcp_pos[0] - self.painting_dist + 0.04
         web_top_z = tcp_pos[2] + self.web_height/2
         web_bottom_x = web_top_x
         web_bottom_z = web_top_z - self.web_height
         print(f"web_top_x: {web_top_x}, web_top_z: {web_top_z}")
         self.surface_painting_dist = self.painting_dist
-        self.flange_painting_dist = self.painting_dist - 0.2
+        self.flange_painting_dist = self.painting_dist - self.flange_painting_dist_adjust
         # 喷涂上表面
         self.paint_top = [
             (self.point_on_circle(web_top_x, web_top_z, self.surface_painting_dist, self.painting_deg_surface)[0]),
@@ -815,7 +845,7 @@ class system_control:
                         
     def pid_dist_control(self, distance, target_dist, dt):
         v2 = 0.0  # x轴默认速度为0
-        if distance != -1 and not self.clog_flag and not self.ob_flag:
+        if distance != -1 and not self.clog_flag:
             # 1. 数据滤波
             raw_front_dist = distance
             if raw_front_dist > 0:  # 确保是有效读数
@@ -854,7 +884,8 @@ class system_control:
                 else:
                     self.ob_status = 2
                 if self.ob_flag:
-                    rospy.sleep(1)
+                    rospy.loginfo("obobobobob")
+                    rospy.sleep(2.5)
                     continue
                 tcp_pos = self.duco_cobot.get_tcp_pose()
                 key_input = self.get_key_input()
@@ -868,7 +899,7 @@ class system_control:
                 # 喷涂上下翼板
                 if (self.paint_motion == 2 or self.paint_motion == 4) and (self.last_H_time - time.time() < 1):
                     target_dist = self.target_dist_in_flange
-                    now_dist = (self.get_directional_distance("left") + self.get_directional_distance("right")) / 2
+                    now_dist =(self.get_directional_distance("left") + self.get_directional_distance("right")) / 2
                     v2 = self.pid_dist_control(now_dist, target_dist, dt)
                     rospy.loginfo(f"v2: {v2}\ntarget_dist_in_flange: {self.target_dist_in_flange}, \ndistance_now: {now_dist}")
 
@@ -1095,3 +1126,4 @@ class system_control:
 
         finally:
             self.emergency_thread.join()
+            self.ob_thread.join()
