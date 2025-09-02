@@ -319,6 +319,8 @@ class EndEffectorObstacleAvoidance:
                     self.safe_distance = OB_SAFE_DISTANCE_F
                 elif region_name == 'up' or region_name == 'down':
                     self.safe_distance = OB_SAFE_DISTANCE_F
+                elif region_name == 'left_mid' or region_name == 'right_mid':
+                    self.safe_distance = OB_SAFE_DISTANCE + 0.1
                 else:
                     self.safe_distance = OB_SAFE_DISTANCE
 

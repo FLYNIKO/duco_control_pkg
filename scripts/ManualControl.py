@@ -280,7 +280,7 @@ class system_control:
 
                     elif self.ob_status == 2: # 自动sync 避障逻辑
                         self.duco_ob.stop(True)
-                        if self.paint_motion == 1 or self.paint_motion == 5 or self.paint_motion == 2 or self.paint_motion == 4:
+                        if self.paint_motion == 1 or self.paint_motion == 5 or self.paint_motion == 2 or self.paint_motion == 4 or self.paint_motion == 3:
 
                             if (ob_data['left_mid'] and ob_data['left_rear']) or (ob_data['right_mid'] and ob_data['right_rear']):
                                 self.ob_flag = True
@@ -294,13 +294,11 @@ class system_control:
                                     ob_data = self.get_obstacle_status()
                                     while ob_data['left_mid']:
                                         ob_data = self.get_obstacle_status()
-                                        self.duco_ob.speedl([0, 0, -0.1, 0, 0, 0],self.acc ,-1, False)
+                                        self.duco_ob.speedl([0, 0, -OB_VELOCITY, 0, 0, 0],self.acc ,-1, False)
                                         rospy.sleep(0.05)
                                     self.duco_ob.speed_stop(False)
-                                    if ob_data['center']:
-                                        self.duco_ob.movel([tcp_pos[0] + 0.1, tcp_pos[1], tcp_pos[2], self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, 0, '', '', '', True)
-                                    elif not ob_data['center'] and not ob_data['left_front'] and ob_data['right_front']:
-                                        rospy.sleep(0.2)
+                                    if (not ob_data['center'] and not ob_data['left_front'] and ob_data['right_front']) or (not ob_data['center'] and not ob_data['left_front'] and not ob_data['right_front']):
+                                        rospy.sleep(0.5)
                                         self.ob_sidemotive_flag = False
                                         self.ob_flag = False
                             
@@ -312,13 +310,11 @@ class system_control:
                                     ob_data = self.get_obstacle_status()
                                     while ob_data['right_mid']:
                                         ob_data = self.get_obstacle_status()
-                                        self.duco_ob.speedl([0, 0, -0.1, 0, 0, 0],self.acc ,-1, False)
+                                        self.duco_ob.speedl([0, 0, -OB_VELOCITY, 0, 0, 0],self.acc ,-1, False)
                                         rospy.sleep(0.05)
                                     self.duco_ob.speed_stop(False)
-                                    if ob_data['center']:
-                                        self.duco_ob.movel([tcp_pos[0] + 0.1, tcp_pos[1], tcp_pos[2], self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, 0, '', '', '', True)
-                                    elif not ob_data['center'] and not ob_data['right_front'] and ob_data['left_front']:
-                                        rospy.sleep(0.2)
+                                    if (not ob_data['center'] and ob_data['left_front'] and not ob_data['right_front']) or (not ob_data['center'] and not ob_data['left_front'] and not ob_data['right_front']):
+                                        rospy.sleep(0.5)
                                         self.ob_sidemotive_flag = False
                                         self.ob_flag = False
                             else:
@@ -327,22 +323,11 @@ class system_control:
                         elif self.paint_motion == 1 or self.paint_motion == 5:
                             if ob_data['center']:
                                 self.ob_flag = True
-                                self.duco_ob.movel([tcp_pos[0] + 0.15, tcp_pos[1], tcp_pos[2], self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, 0, '', '', '', False)
+                                self.duco_ob.movel([tcp_pos[0] + 0.1, tcp_pos[1], tcp_pos[2], self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, 0, '', '', '', False)
                                 rospy.logwarn("| 检测到障碍物，向后躲避！ |")
                             else:
                                 self.ob_flag = False
 
-                        elif self.paint_motion == 3:
-                            if (ob_data['left_mid'] and ob_data['left_rear']) or (ob_data['right_mid'] and ob_data['right_rear']):
-                                self.ob_flag = True
-                                self.ob_safe_pos()
-                            elif ob_data['left_mid'] or ob_data['right_mid'] or ob_data['center']:
-                                self.ob_flag = True
-                                # self.duco_ob.servoj_pose([tcp_pos[0] + 0.2, tcp_pos[1], tcp_pos[2], self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, '', '', '', True)
-                                self.duco_ob.movel([tcp_pos[0] + 0.15, tcp_pos[1], tcp_pos[2], self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, 0, '', '', '', False)
-                                rospy.logwarn("| 检测到障碍物，向后躲避！ |")
-                            else:
-                                self.ob_flag = False
                 else:
                     self.ob_flag = False
             
@@ -498,7 +483,7 @@ class system_control:
             # 提取 distance 和 angle_deg
             self.surface_distance = abs(target_line.start_point.x)
             self.surface_angle_deg = target_line.angle_deg
-            self.target_dist_in_surface = self.painting_dist - abs(abs(self.paint_top[0]) - abs(self.paint_center[0]))
+            self.target_dist_in_surface = self.painting_dist - abs(abs(self.paint_top_X) - abs(self.paint_center[0]))
 
             # rospy.loginfo(f"找到目标线 (id=999): distance={self.target_distance:.3f}, angle_deg={self.target_angle_deg:.3f}")
         else:
@@ -810,32 +795,36 @@ class system_control:
         self.surface_painting_dist = self.painting_dist
         self.flange_painting_dist = self.painting_dist - self.flange_painting_dist_adjust
         # 喷涂上表面
+        # (self.point_on_circle(web_top_x, web_top_z, self.surface_painting_dist, self.painting_deg_surface)[0])
         self.paint_top = [
-            (self.point_on_circle(web_top_x, web_top_z, self.surface_painting_dist, self.painting_deg_surface)[0]),
+            self.paint_center[0],
             tcp_pos[1],
             (self.point_on_circle(web_top_x, web_top_z, self.surface_painting_dist, self.painting_deg_surface)[1]),
             tcp_pos[3], tcp_pos[4], tcp_pos[5]] 
         # 喷涂上翼面
+        # (self.point_on_circle(web_top_x, web_top_z, self.flange_painting_dist, -self.painting_deg_flange)[0])
         self.paint_low = [
-            (self.point_on_circle(web_top_x, web_top_z, self.flange_painting_dist, -self.painting_deg_flange)[0]),
+            self.paint_center[0],
             tcp_pos[1],
             (self.point_on_circle(web_top_x, web_top_z, self.flange_painting_dist, -self.painting_deg_flange)[1]),
             tcp_pos[3], tcp_pos[4], tcp_pos[5]] 
 
         # 喷涂下表面
+        # (self.point_on_circle(web_bottom_x, web_bottom_z, self.surface_painting_dist, -self.painting_deg_surface)[0])
         self.paint_bottom = [
-            (self.point_on_circle(web_bottom_x, web_bottom_z, self.surface_painting_dist, -self.painting_deg_surface)[0]),
+            self.paint_center[0],
             tcp_pos[1],
             (self.point_on_circle(web_bottom_x, web_bottom_z, self.surface_painting_dist, -self.painting_deg_surface)[1]),
             tcp_pos[3], tcp_pos[4], tcp_pos[5]]
         # 喷涂下翼面
+        # (self.point_on_circle(web_bottom_x, web_bottom_z, self.flange_painting_dist, self.painting_deg_flange)[0])
         self.paint_high = [
-            (self.point_on_circle(web_bottom_x, web_bottom_z, self.flange_painting_dist, self.painting_deg_flange)[0]),
+            self.paint_center[0],
             tcp_pos[1],
             (self.point_on_circle(web_bottom_x, web_bottom_z, self.flange_painting_dist, self.painting_deg_flange)[1]),
             tcp_pos[3], tcp_pos[4], tcp_pos[5]] 
-
-        self.target_dist_in_flange = self.painting_dist - abs(abs(self.paint_high[0]) - abs(self.paint_center[0]))
+        self.paint_top_X = self.point_on_circle(web_bottom_x, web_bottom_z, self.flange_painting_dist, self.painting_deg_flange)[0]
+        self.target_dist_in_flange = self.painting_dist - abs(abs(self.paint_top_X) - abs(self.paint_center[0]))
         self.target_dist_in_web = self.painting_dist
         rospy.loginfo("------ |-| 已找到5个喷涂位姿，选择位置开始喷涂！--------\n")
         rospy.loginfo("   ↓       喷涂上表面位姿： %s" % self.paint_top)
@@ -867,7 +856,7 @@ class system_control:
                 if abs(error) > deadband_threshold:
                     v2 = self.pid_z.compute(target_dist, filtered_front_dist, dt)
                     # 限制最大速度
-                    v2 = max(min(v2, 0.15), -0.15)  
+                    v2 = max(min(v2, 0.17), -0.17)  
         return v2
 
     # 自动喷边走边喷
@@ -1032,13 +1021,13 @@ class system_control:
                 elif key_input.x0:
                     self.ob_status = 1
                     self.duco_cobot.speedl([0, 0, v2, 0, 0, 0],self.acc ,-1, False)
-                    now_dist = self.get_directional_distance("right")
+                    now_dist = self.get_directional_distance("main")
                     rospy.loginfo(f"distance_now: {now_dist}")
                 #机械臂末端向  后
                 elif key_input.x1:
                     self.ob_status = 1
                     self.duco_cobot.speedl([0, 0, -v2, 0, 0, 0],self.acc ,-1, False)
-                    now_dist = self.get_directional_distance("right")
+                    now_dist = self.get_directional_distance("main")
                     rospy.loginfo(f"distance_now: {now_dist}")
                 #机械臂末端向  右
                 elif key_input.y1:
