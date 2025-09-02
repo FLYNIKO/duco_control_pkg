@@ -11,12 +11,12 @@ OB_THRESHOLD_R = 0.35 # 右区阈值
 OB_THRESHOLD_M = 0.35 # 中区阈值（左右区绝对值）
 OB_THRESHOLD_U = 0.2 # 上区阈值
 OB_THRESHOLD_D = -0.2 # 下区阈值
-OB_THRESHOLD_FRONT_MID = -0.25 # 前后分界线
+OB_THRESHOLD_FRONT_MID = -0.3 # 前后分界线
 OB_THRESHOLD_MID_REAR = 0.4
-OB_SAFE_DISTANCE_F = 0.4 # 上、下、前安全距离
-OB_SAFE_DISTANCE = 0.8 # 安全距离
-OB_FORWARD_MIN = -0.2 # 前方最小距离
-OB_FORWARD_MAX = -1 # 前方最大距离
+OB_SAFE_DISTANCE_F = 0.43 # 上、下、前安全距离
+OB_SAFE_DISTANCE = 0.85 # 安全距离
+OB_FORWARD_MIN = -0.01 # 前方最小距离
+OB_FORWARD_MAX = -0.3 # 前方最大距离
 
 # IP = '192.168.100.10' # 虚拟机IP地址
 IP = '192.168.0.168' # 机械臂IP地址

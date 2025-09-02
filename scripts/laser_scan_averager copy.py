@@ -3,7 +3,7 @@ import rospy
 from sensor_msgs.msg import LaserScan
 import numpy as np
 from collections import deque
-import threading
+
 class KalmanFilter:
     """单个雷达点的卡尔曼滤波器"""
     def __init__(self, dt=0.1, process_noise=0.02, measurement_noise=0.15):
@@ -72,9 +72,6 @@ class LaserScanAverager:
 
         self.buffer_size = 5  # 每0.5秒 取5帧 (10Hz)
         
-        # 添加线程锁来保护buffer访问
-        self.buffer_locks = {}
-        
         # 卡尔曼滤波器参数
         self.use_kalman = rospy.get_param('~use_kalman_filter', False)
         self.process_noise = rospy.get_param('~process_noise', 0.01)
@@ -107,10 +104,6 @@ class LaserScanAverager:
             }
         }
 
-        # 为每个雷达创建对应的线程锁
-        for key in self.radar_topics.keys():
-            self.buffer_locks[key] = threading.Lock()
-
         # 分别创建订阅和发布器
         for key, radar in self.radar_topics.items():
             radar["sub"] = rospy.Subscriber(radar["scan_topic"], LaserScan, self.make_callback(key))
@@ -120,8 +113,7 @@ class LaserScanAverager:
 
     def make_callback(self, key):
         def callback(msg):
-            with self.buffer_locks[key]:
-                self.radar_topics[key]["buffer"].append(msg)
+            self.radar_topics[key]["buffer"].append(msg)
         return callback
 
     def apply_kalman_filter(self, radar_key, ranges):
@@ -153,37 +145,34 @@ class LaserScanAverager:
 
     def publish_filtered_scan(self, event):
         for key, radar in self.radar_topics.items():
-            with self.buffer_locks[key]:
-                buffer = radar["buffer"]
-                if len(buffer) < self.buffer_size:
-                    continue  # 数据不够，不处理
-
-                # 创建buffer的副本以避免在迭代过程中修改
-                buffer_copy = list(buffer)
-                latest_scan = buffer_copy[-1]
+            buffer = radar["buffer"]
+            if len(buffer) < self.buffer_size:
+                continue  # 数据不够，不处理
 
             if self.use_kalman:
                 # 使用卡尔曼滤波器处理最新的扫描数据
+                latest_scan = buffer[-1]
                 filtered_ranges = self.apply_kalman_filter(key, latest_scan.ranges)
                 
                 # 对intensities也可以应用简单的滤波（如果存在）
                 if latest_scan.intensities:
                     # 对intensities使用简单的移动平均
-                    avg_intensities = np.mean([np.array(scan.intensities) for scan in buffer_copy], axis=0)
+                    avg_intensities = np.mean([np.array(scan.intensities) for scan in buffer], axis=0)
                     filtered_intensities = avg_intensities.tolist()
                 else:
                     filtered_intensities = []
                     
             else:
                 # 使用原来的滑动平均方法
-                avg_ranges = np.mean([np.array(scan.ranges) for scan in buffer_copy], axis=0)
+                avg_ranges = np.mean([np.array(scan.ranges) for scan in buffer], axis=0)
                 filtered_ranges = avg_ranges.tolist()
                 
-                avg_intensities = np.mean([np.array(scan.intensities) if scan.intensities else np.zeros(len(scan.ranges)) for scan in buffer_copy], axis=0)
+                avg_intensities = np.mean([np.array(scan.intensities) if scan.intensities else np.zeros(len(scan.ranges)) for scan in buffer], axis=0)
                 filtered_intensities = avg_intensities.tolist()
 
             # 创建滤波后的扫描消息
             filtered_scan = LaserScan()
+            latest_scan = buffer[-1]
             
             # 复制header和配置信息
             filtered_scan.header = latest_scan.header
