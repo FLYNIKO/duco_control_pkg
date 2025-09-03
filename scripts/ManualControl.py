@@ -292,13 +292,18 @@ class system_control:
                                 start_time = time.time()
                                 while self.ob_sidemotive_flag:
                                     ob_data = self.get_obstacle_status()
+                                    obstacle_keys = ['left_front', 'left_mid', 'left_rear', 'right_front', 'right_mid', 'right_rear', 'center', 'up', 'down']
+                                    rospy.loginfo("--------------------------------")
+                                    for key in obstacle_keys:
+                                        if ob_data.get(key):
+                                            rospy.logwarn(f"| obobob  L  检测到{key}障碍物，注意操作！ |")
                                     while ob_data['left_mid']:
                                         ob_data = self.get_obstacle_status()
                                         self.duco_ob.speedl([0, 0, -OB_VELOCITY, 0, 0, 0],self.acc ,-1, False)
                                         rospy.sleep(0.05)
                                     self.duco_ob.speed_stop(False)
-                                    if (not ob_data['center'] and not ob_data['left_front'] and ob_data['right_front']) or (not ob_data['center'] and not ob_data['left_front'] and not ob_data['right_front']):
-                                        rospy.sleep(0.5)
+                                    if (not ob_data['center'] and not ob_data['left_front'] and ob_data['right_front']) or ((not ob_data['center'] and not ob_data['left_front'] and not ob_data['right_front']) and (time.time() - start_time) > 10):
+                                        rospy.sleep(0.2)
                                         self.ob_sidemotive_flag = False
                                         self.ob_flag = False
                             
@@ -308,25 +313,30 @@ class system_control:
                                 start_time = time.time()
                                 while self.ob_sidemotive_flag:
                                     ob_data = self.get_obstacle_status()
+                                    obstacle_keys = ['left_front', 'left_mid', 'left_rear', 'right_front', 'right_mid', 'right_rear', 'center', 'up', 'down']
+                                    rospy.loginfo("--------------------------------")
+                                    for key in obstacle_keys:
+                                        if ob_data.get(key):
+                                            rospy.logwarn(f"| obobob  R  检测到{key}障碍物，注意操作！ |")
                                     while ob_data['right_mid']:
                                         ob_data = self.get_obstacle_status()
                                         self.duco_ob.speedl([0, 0, -OB_VELOCITY, 0, 0, 0],self.acc ,-1, False)
                                         rospy.sleep(0.05)
                                     self.duco_ob.speed_stop(False)
-                                    if (not ob_data['center'] and ob_data['left_front'] and not ob_data['right_front']) or (not ob_data['center'] and not ob_data['left_front'] and not ob_data['right_front']):
-                                        rospy.sleep(0.5)
+                                    if (not ob_data['center'] and ob_data['left_front'] and not ob_data['right_front']) or ((not ob_data['center'] and not ob_data['left_front'] and not ob_data['right_front']) and (time.time() - start_time) > 10):
+                                        rospy.sleep(0.2)
                                         self.ob_sidemotive_flag = False
                                         self.ob_flag = False
                             else:
                                 self.ob_flag = False
 
-                        elif self.paint_motion == 1 or self.paint_motion == 5:
-                            if ob_data['center']:
-                                self.ob_flag = True
-                                self.duco_ob.movel([tcp_pos[0] + 0.1, tcp_pos[1], tcp_pos[2], self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, 0, '', '', '', False)
-                                rospy.logwarn("| 检测到障碍物，向后躲避！ |")
-                            else:
-                                self.ob_flag = False
+                        # elif self.paint_motion == 1 or self.paint_motion == 5:
+                        #     if ob_data['center']:
+                        #         self.ob_flag = True
+                        #         self.duco_ob.movel([tcp_pos[0] + 0.1, tcp_pos[1], tcp_pos[2], self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, 0, '', '', '', False)
+                        #         rospy.logwarn("| 检测到障碍物，向后躲避！ |")
+                        #     else:
+                        #         self.ob_flag = False
 
                 else:
                     self.ob_flag = False
@@ -787,7 +797,7 @@ class system_control:
         self.paint_center = tcp_pos # 喷涂中心点
 
         # 喷涂上表面
-        web_top_x = tcp_pos[0] - self.painting_dist + 0.04
+        web_top_x = tcp_pos[0] - self.painting_dist
         web_top_z = tcp_pos[2] + self.web_height/2
         web_bottom_x = web_top_x
         web_bottom_z = web_top_z - self.web_height
@@ -856,7 +866,7 @@ class system_control:
                 if abs(error) > deadband_threshold:
                     v2 = self.pid_z.compute(target_dist, filtered_front_dist, dt)
                     # 限制最大速度
-                    v2 = max(min(v2, 0.17), -0.17)  
+                    v2 = max(min(v2, 0.3), -0.3)  
         return v2
 
     # 自动喷边走边喷
@@ -894,7 +904,7 @@ class system_control:
                 if (self.paint_motion == 2 or self.paint_motion == 4) and (self.last_H_time - time.time() < 1):
                     target_dist = self.target_dist_in_flange
                     now_dist =(self.get_directional_distance("left") + self.get_directional_distance("right")) / 2
-                    if abs(self.get_directional_distance("left") - self.get_directional_distance("right")) > 0.12:
+                    if abs(self.get_directional_distance("left") - self.get_directional_distance("right")) > 0.1:
                         v2 = 0.0
                     else:
                         v2 = self.pid_dist_control(now_dist, target_dist, dt)
@@ -904,13 +914,19 @@ class system_control:
                 elif (self.paint_motion == 1 or self.paint_motion == 5) and (self.last_line_time - time.time() < 1):
                     target_dist = self.target_dist_in_surface
                     now_dist = self.surface_distance
-                    v2 = self.pid_dist_control(now_dist, target_dist, dt)
+                    if abs(self.get_directional_distance("left") - self.get_directional_distance("right")) > 0.1:
+                        v2 = 0.0
+                    else:
+                        v2 = self.pid_dist_control(now_dist, target_dist, dt)
                     rospy.loginfo(f"v2: {v2}\ntarget_dist_in_surface: {self.target_dist_in_surface}, \ndistance_now: {now_dist}")
                 # 喷涂中腹板
                 elif self.paint_motion == 3 and (self.last_H_time - time.time() < 1):
                     target_dist = self.target_dist_in_web
                     now_dist = (self.get_directional_distance("left") + self.get_directional_distance("right")) / 2
-                    v2 = self.pid_dist_control(now_dist, target_dist, dt)
+                    if abs(self.get_directional_distance("left") - self.get_directional_distance("right")) > 0.1:
+                        v2 = 0.0
+                    else:
+                        v2 = self.pid_dist_control(now_dist, target_dist, dt)     
                     rospy.loginfo(f"v2: {v2}\ntarget_dist_web: {self.target_dist_in_web}, \ndistance_now: {now_dist}")
                 else:
                     v2 = 0.0
