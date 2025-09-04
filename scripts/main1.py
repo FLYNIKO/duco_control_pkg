@@ -50,11 +50,16 @@ class DemoApp:
         while not self.stopheartthread:
             tcp_pos = self.duco_thread.get_tcp_pose()
             tcp_state = self.duco_thread.get_robot_state()
-            empty_state = [0] * 5
+            empty_state = [0] * 4
+            # 从 system_control 获取车辆状态
+            if self.sys_ctrl is not None:
+                car_state = self.sys_ctrl.get_car_state()
+            else:
+                car_state = [0, 0]  # 默认值
             self.tcp_state = tcp_state
             # 发布 ROS topic
             msg = Float64MultiArray()
-            msg.data = tcp_state + tcp_pos + empty_state
+            msg.data = tcp_state + tcp_pos + empty_state + car_state
             self.tcp_pub.publish(msg)
 
             self._stop_event.wait(0.2)

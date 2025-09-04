@@ -860,7 +860,8 @@ class SeparateRadarLineDetector:
                     temp_line['id'] = self.radar_configs['left']['line_id_counter']
                     self.radar_configs['left']['line_id_counter'] += 1
                 all_lines_to_publish.append(temp_line)
-                rospy.loginfo("===yes in left")
+                if self.debug_mode:
+                    rospy.loginfo("===yes in left")
             for line in right_lines:
                 # 复制一份以避免修改原始数据
                 temp_line = line.copy()
@@ -868,7 +869,8 @@ class SeparateRadarLineDetector:
                     temp_line['id'] = self.radar_configs['right']['line_id_counter']
                     self.radar_configs['right']['line_id_counter'] += 1
                 all_lines_to_publish.append(temp_line)
-                rospy.loginfo("===yes in right")
+                if self.debug_mode:
+                    rospy.loginfo("===yes in right")
 
                 
             all_lines_to_publish.append(connection_line_info) # 添加连接线
