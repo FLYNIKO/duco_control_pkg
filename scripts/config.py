@@ -21,16 +21,16 @@ OB_FORWARD_MAX = -2 # 前方最大距离
 # IP = '192.168.100.10' # 虚拟机IP地址
 IP = '192.168.0.168' # 机械臂IP地址
 PORT = 7003 # 机械臂端口号
-DEBUG_MODE = True # 是否显示openCV调试窗口
+DEBUG_MODE = False # 是否显示openCV调试窗口
 
 AUTOSPEED = 0.2 # 自动喷涂速度
 DEFAULT_VEL = 0.2 # 机械臂末端手动速度
 DEFAULT_ACC = 0.3 # 机械臂末端加速度
 OB_ACC = 0.6 # 避障加速度
 OB_VELOCITY = 0.36 # 避障速度
-KP = 0.7
+KP = 0.68
 KI = 0.0
-KD = 0.01
+KD = 0.05
 DEADZONE = 0.02 # PID死区 (mm)
 
 PAINTDEG = 90 # 喷涂角度(圆柱)

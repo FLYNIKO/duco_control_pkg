@@ -730,7 +730,7 @@ class system_control:
                 rospy.logwarn("检测到急停信号，停止寻找钢梁中心位置！")
                 return
             tcp_pos[2] = start_z - i * self.step_size
-            self.duco_cobot.servoj_pose(tcp_pos, self.vel, self.acc, '', '', '', True)
+            self.duco_cobot.movel(tcp_pos, self.vel, self.acc, 0, '', '', '', True)
             rospy.sleep(0.05)
 
             # 读取前向激光传感器
@@ -763,11 +763,11 @@ class system_control:
             center_pos[2] = center_z
 
             # 移动到目标位置
-            self.duco_cobot.servoj_pose(center_pos, self.vel, self.acc, '', '', '', True)
+            self.duco_cobot.movel(center_pos, self.vel, self.acc, 0, '', '', '', True)
             # 计算当前喷涂距离，并移动到目标喷涂距离
             dist = self.get_directional_distance("right")
             center_pos[0] -= dist - self.painting_dist + 0.2
-            self.duco_cobot.servoj_pose(center_pos, self.vel, self.acc, '', '', '', True)
+            self.duco_cobot.movel(center_pos, self.vel, self.acc, 0, '', '', '', True)
             self.paint_center = center_pos
 
         # 设置寻找模式
@@ -807,7 +807,7 @@ class system_control:
         self.center_z = tcp_pos[2] - self.start_z + self.web_length / 2
         self.center_x = tcp_pos[0] + self.painting_dist - self.web_distance
         rospy.loginfo(f"center_x: {self.center_x}, center_z: {self.center_z}")
-        self.duco_cobot.servoj_pose([self.center_x, tcp_pos[1], self.center_z, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.vel, self.acc, '', '', '', True)
+        self.duco_cobot.movel([self.center_x, tcp_pos[1], self.center_z, tcp_pos[3], tcp_pos[4], tcp_pos[5]], self.vel, self.acc, 0, '', '', '', True)
         self.paint_motion = 3
         rospy.sleep(0.5)
         rospy.loginfo(" |-| 移动到center位姿完成，准备计算其余位姿")
@@ -1109,14 +1109,14 @@ class system_control:
                 #喷涂顶部
                 elif key_input.top:
                     self.pos_move(self.paint_top)
-                #喷涂下翼板
-                elif key_input.high:
+                #喷涂下翼板 （和上翼板相反）
+                elif key_input.low:
                     self.pos_move(self.paint_high)
                 #喷涂中腹板
                 elif key_input.center:
                     self.pos_move(self.paint_center)
                 #喷涂上翼板
-                elif key_input.low:
+                elif key_input.high:
                     self.pos_move(self.paint_low)
                 #喷涂底部
                 elif key_input.bottom:
