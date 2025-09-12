@@ -78,6 +78,7 @@ class system_control:
         self.ob_sidemotive_flag = False
         self.car_flag = False # 车辆标志，True-避障，False-正常
         self.car_state = [8, 8] # 第一个是车辆启动状态，2-停车，8-开车 | 第二个是喷涂机喷涂状态，2-停喷，8-开喷
+        self.running_state = 0
         self.car_direction = 0 # 车辆方向，0-前进，1-后退
 
         self.ob_status = 1 # 避障模式状态，0-全向，1-仅提示，2-自动sync, 3-自动interval
@@ -185,6 +186,7 @@ class system_control:
             state = self.duco_stop.get_robot_state()
             if key_input.multi or self.emergency_stop_flag:
                 rospy.logwarn("| 检测到紧急停止按键，正在执行紧急停止！ |")
+                self.running_state = 999
                 self.ob_status = 1
                 self.emergency_stop_flag = True
                 self.ob_sidemotive_flag = False
@@ -253,6 +255,7 @@ class system_control:
                     if self.ob_status == 0: # 全向避障
                         self.ob_flag = True
                         self.duco_ob.stop(True)
+                        self.running_state = 888
                         if (ob_data['left_mid'] and ob_data['left_rear']) or (ob_data['right_mid'] and ob_data['right_rear']):
                             self.ob_safe_pos()
                         elif ob_data['left_mid'] or ob_data['right_mid'] or ob_data['center']:
@@ -285,14 +288,17 @@ class system_control:
 
                             if (ob_data['left_mid'] and ob_data['left_rear']) or (ob_data['right_mid'] and ob_data['right_rear']):
                                 self.duco_ob.stop(True)
+                                self.running_state = 810
                                 self.ob_flag = True
                                 self.ob_safe_pos()
+                                self.running_state = 800
 
                             elif ob_data['left_mid'] and self.car_direction == 0:
                                 self.duco_ob.stop(True)
                                 self.ob_flag = True
                                 self.ob_sidemotive_flag = True
                                 self.car_state = [8, 2] # 车辆开车，喷涂机停喷
+                                self.running_state = 820
                                 start_time = time.time()
                                 while self.ob_sidemotive_flag:
                                     ob_data = self.get_obstacle_status()
@@ -310,6 +316,7 @@ class system_control:
                                     if (not ob_data['center'] and not ob_data['left_front'] and ob_data['right_front']) or ((not ob_data['center'] and not ob_data['left_front'] and not ob_data['right_front']) and (time.time() - start_time) > 10):
                                         # rospy.sleep(0.2)
                                         self.car_state = [2, 2] # 车辆停车，喷涂机停喷
+                                        self.running_state = 821
                                         self.ob_sidemotive_flag = False
                                         self.ob_flag = False
                         
@@ -318,6 +325,7 @@ class system_control:
                                 self.ob_flag = True
                                 self.ob_sidemotive_flag = True
                                 self.car_state = [8, 2] # 车辆开车，喷涂机停喷
+                                self.running_state = 820
                                 start_time = time.time()
                                 while self.ob_sidemotive_flag:
                                     ob_data = self.get_obstacle_status()
@@ -335,6 +343,7 @@ class system_control:
                                     if (not ob_data['center'] and ob_data['left_front'] and not ob_data['right_front']) or ((not ob_data['center'] and not ob_data['left_front'] and not ob_data['right_front']) and (time.time() - start_time) > 10):
                                         # rospy.sleep(0.2)
                                         self.car_state = [2, 2] # 车辆停车，喷涂机停喷
+                                        self.running_state = 821
                                         self.ob_sidemotive_flag = False
                                         self.ob_flag = False
                             else:
@@ -637,7 +646,7 @@ class system_control:
         Returns:
             list: 包含车辆状态信息的列表
         """
-        return self.car_state
+        return self.car_state, self.running_state
         
         # 读取/topic中的按键输入
     def _keys_callback(self, msg):
@@ -688,6 +697,7 @@ class system_control:
     # 堵枪清理动作
     def clog_function(self):
         if not self.clog_flag:      # 发生堵枪时第一次按下，转到清理位置，执行清理工作
+            self.running_state = 300
             self.clog_flag = True
             self.ob_status = 1
             self.tcp_pos = self.duco_cobot.get_tcp_pose()
@@ -696,6 +706,7 @@ class system_control:
             if self.autopaint_flag:
                 rospy.loginfo("自动喷涂模式已暂停，待再次按下堵枪按钮时恢复位置并继续自动喷涂模式")
         else:                       # 堵枪清理结束之后按下按钮，回到之前位置继续工作
+            self.running_state = 301
             self.clog_flag = False
             self.duco_cobot.servoj_pose([self.paint_center[0], self.tcp_pos[1], self.tcp_pos[2], self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.vel * 1.5, self.acc, '', '', '', True)
             rospy.loginfo("已回到堵枪前位置: %s" % self.tcp_pos)
@@ -711,6 +722,7 @@ class system_control:
 
     # 寻找五个喷涂位姿
     def find_central_pos(self):
+        self.running_state = 200
         self.position_flag = False
         self.ob_status = 1
         
@@ -770,6 +782,7 @@ class system_control:
             self.duco_cobot.movel(center_pos, self.vel, self.acc, 0, '', '', '', True)
             self.paint_center = center_pos
 
+        self.running_state = 201
         # 设置寻找模式
         self.find_mode = True
         rospy.loginfo(" |-| 进入寻找模式，等待收集H检测信息...")
@@ -864,6 +877,7 @@ class system_control:
         rospy.loginfo("\n------------------------------------------------")
         self.position_flag = True
         self.find_mode = False
+        self.running_state = 202
         rospy.loginfo(" |-| 寻找喷涂位姿完成！")
                         
     def pid_dist_control(self, distance, target_dist, dt):
@@ -891,12 +905,14 @@ class system_control:
     # 自动喷边走边喷
     def auto_paint_sync(self):
         rospy.loginfo("-----进入自动模式-----")
+        self.running_state = 400
         self.autopaint_flag = True
         v2 = 0.0  # 初始化前后速度
         cur_time = time.time()
         last_time = cur_time
 
         if self.paint_motion == 0:            
+            self.running_state = 401
             rospy.logwarn("| 当前机械臂不在喷涂位置，请先选择一个喷涂位置再开始自动程序 |")
             return
 
@@ -916,6 +932,7 @@ class system_control:
                 now = time.time()
                 dt = now - last_time
                 last_time = now
+                self.running_state = 400
 
                 if key_input.clog:
                     self.clog_function()
@@ -931,6 +948,7 @@ class system_control:
                         v2 = self.pid_dist_control(now_dist, target_dist, dt)
                     if not self.ob_flag and abs(target_dist - now_dist) < 0.05:
                         self.car_state = [8, 8] # 车辆开车，喷涂机开喷
+                        self.running_state = 800
                     rospy.loginfo(f"v2: {v2}\ntarget_dist_in_flange: {self.target_dist_in_flange}, \ndistance_now: {now_dist}")
 
                 # 喷涂上下表面
@@ -943,6 +961,7 @@ class system_control:
                         v2 = self.pid_dist_control(now_dist, target_dist, dt)
                     if not self.ob_flag and abs(target_dist - now_dist) < 0.05:
                         self.car_state = [8, 8] # 车辆开车，喷涂机开喷
+                        self.running_state = 800
                     rospy.loginfo(f"v2: {v2}\ntarget_dist_in_surface: {self.target_dist_in_surface}, \ndistance_now: {now_dist}")
                 
                 # 喷涂中腹板
@@ -955,6 +974,7 @@ class system_control:
                         v2 = self.pid_dist_control(now_dist, target_dist, dt)  
                     if not self.ob_flag and abs(target_dist - now_dist) < 0.05:
                         self.car_state = [8, 8] # 车辆开车，喷涂机开喷   
+                        self.running_state = 800
                     rospy.loginfo(f"v2: {v2}\ntarget_dist_web: {self.target_dist_in_web}, \ndistance_now: {now_dist}")
                 
                 else:
@@ -963,7 +983,7 @@ class system_control:
                 self.duco_cobot.speedl([0, 0, v2, 0, 0, 0], self.acc * 0.9, -1, False)
                 # self.duco_cobot.speedl([0, 0, 0, 0, 0, 0], self.acc * 0.9, -1, False)
 
-
+        self.running_state = 401
         rospy.loginfo("-----退出自动模式-----")
 
     # 自动喷涂，车辆不动机械臂动
@@ -979,18 +999,23 @@ class system_control:
             self.duco_cobot.servoj_pose(aim_pos, self.vel, self.acc, '', '', '', True)
             if aim_pos == self.paint_top:
                 self.paint_motion = 1
+                self.running_state = 131
                 rospy.loginfo("移动到喷涂上表面位置： %s" % aim_pos)
             elif aim_pos == self.paint_high:
                 self.paint_motion = 2
+                self.running_state = 141
                 rospy.loginfo("移动到喷涂下翼板位置： %s" % aim_pos)
             elif aim_pos == self.paint_center:
                 self.paint_motion = 3
+                self.running_state = 151
                 rospy.loginfo("移动到喷涂中腹板位置： %s" % aim_pos)
             elif aim_pos == self.paint_low:
-                self.paint_motion = 4
+                self.paint_motion = 4   
+                self.running_state = 161
                 rospy.loginfo("移动到喷涂上翼板位置： %s" % aim_pos)
             elif aim_pos == self.paint_bottom:
                 self.paint_motion = 5
+                self.running_state = 171
                 rospy.loginfo("移动到喷涂下表面位置： %s" % aim_pos)
             elif aim_pos == self.init_pos:
                 self.paint_motion = 0
@@ -1002,6 +1027,7 @@ class system_control:
                 self.paint_motion = 0
                 rospy.loginfo("移动到目标位置： %s" % aim_pos)
         else:
+            self.running_state = 199
             rospy.logwarn("| 无效位置坐标！请先执行自动寻找程序 |")
 
     def paint_pos_adjust(self):
@@ -1014,11 +1040,13 @@ class system_control:
             rospy.logwarn("| 请先执行自动寻找程序 |")
 
     def run(self):
+        self.running_state = 110
         rospy.loginfo("等待移动到初始位置...")
         
         self.paint_motion = 0
         # self.duco_cobot.movej2(self.init_pos, 2*self.vel, self.acc, 0, True)
         self.duco_cobot.servoj_pose(self.init_pos, self.vel, self.acc, '', '', '', True)
+        self.running_state = 111
         rospy.loginfo("移动到初始位置: %s" % self.init_pos)
         rospy.loginfo("================================")
         rospy.loginfo("'/Duco_state'                        话题： 机械臂状态")
@@ -1097,29 +1125,38 @@ class system_control:
                 #初始化位置
                 elif key_input.init:                    
                     self.ob_status = 1
+                    self.running_state = 110
                     self.duco_cobot.servoj_pose(self.init_pos, self.vel, self.acc, '', '', '', True)
+                    self.running_state = 111
                     rospy.loginfo("移动到初始位置")
                     self.paint_motion = 0
                 #维修位置
                 elif key_input.serv:                    
                     self.ob_status = 1
+                    self.running_state = 120
                     self.duco_cobot.servoj_pose(self.serv_pos, self.vel, self.acc, '', '', '', True)
+                    self.running_state = 121
                     rospy.loginfo("移动到维修位置")
                     self.paint_motion = 0
                 #喷涂顶部
                 elif key_input.top:
+                    self.running_state = 130
                     self.pos_move(self.paint_top)
                 #喷涂下翼板 （和上翼板相反）
                 elif key_input.low:
+                    self.running_state = 140
                     self.pos_move(self.paint_high)
                 #喷涂中腹板
                 elif key_input.center:
+                    self.running_state = 150
                     self.pos_move(self.paint_center)
                 #喷涂上翼板
                 elif key_input.high:
+                    self.running_state = 160
                     self.pos_move(self.paint_low)
                 #喷涂底部
                 elif key_input.bottom:
+                    self.running_state = 170
                     self.pos_move(self.paint_bottom)
                 #机械臂末端转  pitch上
                 elif key_input.rx0: 
