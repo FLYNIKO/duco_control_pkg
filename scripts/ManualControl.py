@@ -205,37 +205,24 @@ class system_control:
 
     def ob_safe_pos(self):
         # 1. 记录当前点位
-        rospy.logwarn("| 检测到侧障碍物，回收机械臂到安全位置 |")
         original_pos = self.duco_ob.get_tcp_pose()
-        # 2. 先移动到安全位置
+        self.car_state = [2, 2]
+        rospy.logwarn("| 检测到侧障碍物，回收机械臂到安全位置 |")
         self.duco_ob.servoj_pose(self.safe_pos, self.ob_vel, self.acc, '', '', '', True)
-        # 3. 等待 1 秒
-        rospy.sleep(1)
-        # 4. 最多尝试 3 次恢复
-        max_attempts = 3
-        attempt = 0
-        move = False
-        while attempt < max_attempts:
-            if move:
-                break
-            attempt += 1
-            rospy.loginfo(f"尝试恢复到原点位，第 {attempt} 次")
-            # 开始移动到 original_pos
-            self.duco_ob.servoj_pose(original_pos, self.vel, self.acc, '', '', '', False)
-            # 在移动过程中持续判断
-            while self.ob_flag:
-                current_pos = self.duco_ob.get_tcp_pose()
-                if current_pos[0] - original_pos[0] < 0.01 and current_pos[1] - original_pos[1] < 0.01 and current_pos[2] - original_pos[2] < 0.01:
-                    rospy.loginfo("成功回到原点位")
-                    move = True
-                    break  # 成功恢复，直接结束逻辑
-                elif self.is_obstacle_detected():
-                    self.duco_ob.stop(True)
-                    rospy.logwarn("| 检测到障碍，暂停 0.5s |")
-                    rospy.sleep(0.5)
-                    break  # 跳出本轮 while，进行下一次尝试
-            # 如果循环结束还没成功，会进入下一轮 attempt
-        rospy.logwarn("| 超过最大尝试次数，请等待通过障碍后手动恢复 |")
+        rospy.sleep(0.5)
+        rospy.logwarn("| 机械臂已移动到安全位置 |")
+        self.car_state = [8, 2]
+
+        count = 0
+        while count < 10:
+            ob_data = self.get_obstacle_status()
+            if not ob_data['up']:
+                count += 1
+            rospy.sleep(0.25)
+        rospy.logwarn("| 恢复机械臂到之前点位 |")
+        self.car_state = [2, 2]
+        self.duco_ob.servoj_pose([self.paint_center[0], self.paint_center[1], original_pos[2], self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.acc, '', '', '', True)
+        rospy.logwarn("| 机械臂已恢复 |")
 
     def ob_thread(self):
         self._ob_event = threading.Event()
@@ -274,6 +261,7 @@ class system_control:
 
                             rospy.logwarn("| 检测到下方障碍物，向上躲避！ |")
 
+
                     elif self.ob_status == 1: # 无避障
                         obstacle_keys = ['left_front', 'left_mid', 'left_rear', 'right_front', 'right_mid', 'right_rear', 'center', 'up', 'down']
                         rospy.loginfo("--------------------------------")
@@ -286,66 +274,78 @@ class system_control:
                     elif self.ob_status == 2: # 自动sync 避障逻辑
                         if self.paint_motion == 1 or self.paint_motion == 5 or self.paint_motion == 2 or self.paint_motion == 4 or self.paint_motion == 3:
 
-                            if (ob_data['left_mid'] and ob_data['left_rear']) or (ob_data['right_mid'] and ob_data['right_rear']):
+                            if (ob_data['left_mid'] and ob_data['left_rear'] and self.car_direction == 0) or (ob_data['right_mid'] and ob_data['right_rear'] and self.car_direction == 1):
                                 self.duco_ob.stop(True)
-                                self.running_state = 810
                                 self.ob_flag = True
+                                self.running_state = 810
                                 self.ob_safe_pos()
                                 self.running_state = 800
 
                             elif ob_data['left_mid'] and self.car_direction == 0:
                                 self.duco_ob.stop(True)
                                 self.ob_flag = True
-                                self.ob_sidemotive_flag = True
-                                self.car_state = [8, 2] # 车辆开车，喷涂机停喷
-                                self.running_state = 820
-                                start_time = time.time()
-                                while self.ob_sidemotive_flag:
-                                    ob_data = self.get_obstacle_status()
-                                    obstacle_keys = ['left_front', 'left_mid', 'left_rear', 'right_front', 'right_mid', 'right_rear', 'center', 'up', 'down']
-                                    rospy.loginfo("--------------------------------")
-                                    for key in obstacle_keys:
-                                        if ob_data.get(key):
-                                            rospy.logwarn(f"| obobob  L  检测到{key}障碍物，注意操作！ |")
-
-                                    while ob_data['left_mid']:
+                                ob_data = self.get_obstacle_status()
+                                if ob_data['left_rear']:
+                                    self.running_state = 810
+                                    self.ob_safe_pos()
+                                    self.running_state = 800
+                                else:
+                                    self.ob_sidemotive_flag = True
+                                    self.car_state = [8, 2] # 车辆开车，喷涂机停喷
+                                    self.running_state = 820
+                                    start_time = time.time()
+                                    while self.ob_sidemotive_flag:
                                         ob_data = self.get_obstacle_status()
-                                        self.duco_ob.speedl([0, 0, -OB_VELOCITY, 0, 0, 0],self.acc ,-1, False)
-                                        rospy.sleep(0.05)
-                                    self.duco_ob.speed_stop(False)
-                                    if (not ob_data['center'] and not ob_data['left_front'] and ob_data['right_front']) or ((not ob_data['center'] and not ob_data['left_front'] and not ob_data['right_front']) and (time.time() - start_time) > 10):
-                                        # rospy.sleep(0.2)
-                                        self.car_state = [2, 2] # 车辆停车，喷涂机停喷
-                                        self.running_state = 821
-                                        self.ob_sidemotive_flag = False
-                                        self.ob_flag = False
+                                        obstacle_keys = ['left_front', 'left_mid', 'left_rear', 'right_front', 'right_mid', 'right_rear', 'center', 'up', 'down']
+                                        rospy.loginfo("--------------------------------")
+                                        for key in obstacle_keys:
+                                            if ob_data.get(key):
+                                                rospy.logwarn(f"| obobob  L  检测到{key}障碍物，注意操作！ |")
+
+                                        while ob_data['left_mid']:
+                                            ob_data = self.get_obstacle_status()
+                                            self.duco_ob.speedl([0, 0, -OB_VELOCITY, 0, 0, 0],self.acc ,-1, False)
+                                            rospy.sleep(0.05)
+                                        self.duco_ob.speed_stop(False)
+                                        if (not ob_data['center'] and not ob_data['left_front'] and ob_data['right_front']) or ((not ob_data['center'] and not ob_data['left_front'] and not ob_data['right_front']) and (time.time() - start_time) > 10):
+                                            # rospy.sleep(0.2)
+                                            self.car_state = [2, 2] # 车辆停车，喷涂机停喷
+                                            self.running_state = 821
+                                            self.ob_sidemotive_flag = False
+                                            self.ob_flag = False
                         
                             elif ob_data['right_mid'] and self.car_direction == 1:
                                 self.duco_ob.stop(True)
                                 self.ob_flag = True
-                                self.ob_sidemotive_flag = True
-                                self.car_state = [8, 2] # 车辆开车，喷涂机停喷
-                                self.running_state = 820
-                                start_time = time.time()
-                                while self.ob_sidemotive_flag:
-                                    ob_data = self.get_obstacle_status()
-                                    obstacle_keys = ['left_front', 'left_mid', 'left_rear', 'right_front', 'right_mid', 'right_rear', 'center', 'up', 'down']
-                                    rospy.loginfo("--------------------------------")
-                                    for key in obstacle_keys:
-                                        if ob_data.get(key):
-                                            rospy.logwarn(f"| obobob  L  检测到{key}障碍物，注意操作！ |")
-
-                                    while ob_data['right_mid']:
+                                ob_data = self.get_obstacle_status()
+                                if ob_data['left_rear']:
+                                    self.running_state = 810
+                                    self.ob_safe_pos()
+                                    self.running_state = 800
+                                else:
+                                    self.ob_sidemotive_flag = True
+                                    self.car_state = [8, 2] # 车辆开车，喷涂机停喷
+                                    self.running_state = 820
+                                    start_time = time.time()
+                                    while self.ob_sidemotive_flag:
                                         ob_data = self.get_obstacle_status()
-                                        self.duco_ob.speedl([0, 0, -OB_VELOCITY, 0, 0, 0],self.acc ,-1, False)
-                                        rospy.sleep(0.05)
-                                    self.duco_ob.speed_stop(False)
-                                    if (not ob_data['center'] and ob_data['left_front'] and not ob_data['right_front']) or ((not ob_data['center'] and not ob_data['left_front'] and not ob_data['right_front']) and (time.time() - start_time) > 10):
-                                        # rospy.sleep(0.2)
-                                        self.car_state = [2, 2] # 车辆停车，喷涂机停喷
-                                        self.running_state = 821
-                                        self.ob_sidemotive_flag = False
-                                        self.ob_flag = False
+                                        obstacle_keys = ['left_front', 'left_mid', 'left_rear', 'right_front', 'right_mid', 'right_rear', 'center', 'up', 'down']
+                                        rospy.loginfo("--------------------------------")
+                                        for key in obstacle_keys:
+                                            if ob_data.get(key):
+                                                rospy.logwarn(f"| obobob  L  检测到{key}障碍物，注意操作！ |")
+
+                                        while ob_data['right_mid']:
+                                            ob_data = self.get_obstacle_status()
+                                            self.duco_ob.speedl([0, 0, -OB_VELOCITY, 0, 0, 0],self.acc ,-1, False)
+                                            rospy.sleep(0.05)
+                                        self.duco_ob.speed_stop(False)
+                                        if (not ob_data['center'] and ob_data['left_front'] and not ob_data['right_front']) or ((not ob_data['center'] and not ob_data['left_front'] and not ob_data['right_front']) and (time.time() - start_time) > 10):
+                                            # rospy.sleep(0.2)
+                                            self.car_state = [2, 2] # 车辆停车，喷涂机停喷
+                                            self.running_state = 821
+                                            self.ob_sidemotive_flag = False
+                                            self.ob_flag = False
                             else:
                                 self.ob_flag = False
 
@@ -1182,6 +1182,7 @@ class system_control:
                 elif key_input.rz1: 
                     self.ob_status = 1
                     self.duco_cobot.speedl([0, 0, 0, 0, -v4, 0], self.acc, -1, False)
+
 
                 # TODO 圆柱喷涂
                 # elif btn_y:

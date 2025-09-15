@@ -796,7 +796,8 @@ class SeparateRadarLineDetector:
                     end = props['end_point']
 
             else:
-                print(f"No lines detected in {radar_name} radar data")
+                if self.debug_mode:
+                    print(f"No lines detected in {radar_name} radar data")
                 self.publish_scan_points(scan_points_center, radar_name)
                 # 仍然检查连接线（以防另一个雷达有检测结果）
                 self.check_and_publish_connection_line()
