@@ -238,11 +238,18 @@ class StableRadarLineDetector:
         """Classify line as web or flange based on length and characteristics"""
         length = line_props['length']
         deg = line_props['angle_deg']
+        
+        # 调试输出
+        print(f"线段分类: 长度={length:.3f}m, 角度={deg:.1f}°")
+        
         if (length >= self.min_line_length_meters) or (self.min_line_deg-5 < deg < self.min_line_deg+5):
+            print(f"  -> 分类为web (长度条件: {length >= self.min_line_length_meters}, 角度条件: {self.min_line_deg-5 < deg < self.min_line_deg+5})")
             return 'web'  # Longer lines are likely webs
         elif length >= self.min_flange_length_meters:
+            print(f"  -> 分类为flange (长度条件: {length >= self.min_flange_length_meters})")
             return 'flange'  # Shorter lines are likely flanges
         else:
+            print(f"  -> 分类为noise (长度太短: {length:.3f} < {self.min_flange_length_meters})")
             return 'noise'  # Too short to be useful
     
     def detect_h_beam_structures(self, lines):
@@ -263,7 +270,7 @@ class StableRadarLineDetector:
             elif line_type == 'flange':
                 flanges.append(line)
         
-        # print(f"Classified: {len(webs)} webs, {len(flanges)} flanges")
+        print(f"分类结果: {len(webs)} webs, {len(flanges)} flanges")
         
         if len(webs) > 1:
             web_clusters = self.cluster_similar_lines(webs)
@@ -284,6 +291,8 @@ class StableRadarLineDetector:
             web_angle = web['properties']['angle_deg']
             web_midpoint = np.array(web['properties']['midpoint'])
             
+            print(f"检查web: 角度={web_angle:.1f}°, 中点=({web_midpoint[0]:.3f}, {web_midpoint[1]:.3f})")
+            
             # Find flanges that are approximately perpendicular to this web
             associated_webs = []
             associated_flanges = []
@@ -299,11 +308,19 @@ class StableRadarLineDetector:
                 # Check if flange is close to the web
                 distance_to_web = self.point_to_line_distance(flange_midpoint, web['properties'])
                 
-                if angle_diff < 15 and distance_to_web < 0.5:  # 25 degrees tolerance, 0.5m distance
+                print(f"  检查flange: 角度={flange_angle:.1f}°, 角度差={angle_diff:.1f}°, 距离={distance_to_web:.3f}m")
+                
+                if angle_diff < 25 and distance_to_web < 0.8:  # 放宽角度和距离容忍度
+                    print(f"    -> flange匹配!")
                     associated_flanges.append(flange)
+                else:
+                    print(f"    -> flange不匹配 (角度差={angle_diff:.1f}° >= 25° 或 距离={distance_to_web:.3f}m >= 0.8m)")
+            
+            print(f"  web找到 {len(associated_flanges)} 个匹配的flange")
             
             # Create H-beam structure
             if len(associated_flanges) >= 2:
+                print(f"  -> 创建H-beam结构!")
                 h_beam = {
                     'web': web,
                     'flanges': associated_flanges,
@@ -312,6 +329,8 @@ class StableRadarLineDetector:
                 }
                 h_beams.append(h_beam)
                 used_web_ids.add(id(web))
+            else:
+                print(f"  -> 不构成H-beam (需要≥2个flange，实际{len(associated_flanges)}个)")
 
         # Also include standalone flanges that weren't associated with webs
         standalone_flanges = []
@@ -1012,7 +1031,8 @@ class StableRadarLineDetector:
                 
                 # Detect H-beam structures using merged lines
                 h_beams, standalone_flanges, standalone_webs = self.detect_h_beam_structures(merged_lines)
-                # print(f"After clustering: {len(merged_lines)} lines")
+                print(f"当前帧H-beam结构数量: {len(h_beams)}")
+                print(f"当前帧独立flange数量: {len(standalone_flanges)}")
                 
                 # Temporal tracking for stability
                 stable_lines = self.track_lines_temporally(merged_lines)
@@ -1020,6 +1040,17 @@ class StableRadarLineDetector:
                 
                 # Re-analyze stable lines for H-beam structures
                 stable_h_beams, stable_standalone, standalone_webs = self.detect_h_beam_structures(self.stable_lines)
+                
+                # 调试输出
+                print(f"稳定线段数量: {len(stable_lines)}")
+                print(f"稳定H-beam结构数量: {len(stable_h_beams)}")
+                print(f"独立flange数量: {len(stable_standalone)}")
+                
+                # 如果稳定检测没有结果，使用当前帧的检测结果
+                if len(stable_h_beams) == 0 and len(h_beams) > 0:
+                    print("使用当前帧检测结果作为备选")
+                    stable_h_beams = h_beams
+                    stable_standalone = standalone_flanges
                 
                 # Publish results
                 self.publish_scan_points(scan_msg)

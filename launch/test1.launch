@@ -1,0 +1,6 @@
+<launch>
+    <!-- 机械臂主程序 -->
+    <node name="duco_control" pkg="duco_control_pkg" type="main1.py" output="screen"> </node>
+    
+</launch>
+

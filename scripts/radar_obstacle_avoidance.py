@@ -302,7 +302,7 @@ class EndEffectorObstacleAvoidance:
             'right_front': (y > self.threshold_R) & (x < self.threshold_front_mid),  # 右前区
             'right_mid': (y > self.threshold_R) & (x >= self.threshold_front_mid) & (x < self.threshold_mid_rear),  # 右前区
             'right_rear': (y > self.threshold_R) & (x >= self.threshold_mid_rear),  # 右后区
-            'center': (np.abs(y) <= self.threshold_M) & (x < self.forward_min) & (x > self.forward_max),  # 末端前方中央
+            'center': (np.abs(y) <= self.threshold_M) & (x < self.forward_min) & (x > self.forward_max) & (z <= self.threshold_U) & (z >= self.threshold_D),  # 末端前方中央
             'up': z > self.threshold_U,  # 末端上方
             'down': z < self.threshold_D  # 末端下方
         }

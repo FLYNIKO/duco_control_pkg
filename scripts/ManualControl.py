@@ -16,7 +16,7 @@ class KeyInputStruct:
                  init=0, serv=0, multi=0, start=0,
                  rx0=0, rx1=0, ry0=0, ry1=0, rz0=0, rz1=0,
                  clog=0, find=0, high=0, center=0, low=0,
-                 top=0, bottom=0):
+                 top=0, bottom=0, record_diy_point=0, diy_point=0):
         self.x0 = x0
         self.x1 = x1
         self.y0 = y0
@@ -40,6 +40,8 @@ class KeyInputStruct:
         self.low = low
         self.top = top
         self.bottom = bottom
+        self.record_diy_point = record_diy_point
+        self.diy_point = diy_point
         # TODO: 添加更多按键位的解析
 
 class SimplePID:
@@ -265,15 +267,15 @@ class system_control:
 
                     elif self.ob_status == 1: # 无避障
                         obstacle_keys = ['left_front', 'left_mid', 'left_rear', 'right_front', 'right_mid', 'right_rear', 'center', 'up', 'down']
-                        rospy.loginfo("--------------------------------")
                         for key in obstacle_keys:
                             if ob_data.get(key):
                                 rospy.logwarn(f"| 检测到{key}障碍物，注意操作！ |")
                         rospy.loginfo("--------------------------------")
+                        rospy.sleep(1)
 
 
                     elif self.ob_status == 2: # 自动sync 避障逻辑
-                        if self.paint_motion == 1 or self.paint_motion == 5 or self.paint_motion == 2 or self.paint_motion == 4 or self.paint_motion == 3:
+                        if self.paint_motion == 1 or self.paint_motion == 5 or self.paint_motion == 2 or self.paint_motion == 4 or self.paint_motion == 3 or self.paint_motion == 6:
 
                             if (ob_data['left_mid'] and ob_data['left_rear'] and self.car_direction == 0) or (ob_data['right_mid'] and ob_data['right_rear'] and self.car_direction == 1):
                                 self.duco_ob.stop(True)
@@ -647,7 +649,7 @@ class system_control:
         Returns:
             list: 包含车辆状态信息的列表
         """
-        return self.car_state, self.running_state
+        return self.car_state, self.running_state, [self.get_directional_distance("left"), self.get_directional_distance("right"), self.get_directional_distance("main"), 0]
         
         # 读取/topic中的按键输入
     def _keys_callback(self, msg):
@@ -692,8 +694,21 @@ class system_control:
             low  = (key_bits >> 20) & 1,
             top = (key_bits >> 21) & 1,
             bottom = (key_bits >> 22) & 1,
+            record_diy_point = (key_bits >> 23) & 1,
+            diy_point = (key_bits >> 24) & 1,
             # TODO: 添加更多按键位的解析_max=31
         )
+    def record_diy_point(self):
+        self.running_state = 500
+        self.diy_point = self.duco_cobot.get_tcp_pose()
+        rospy.loginfo(f"已记录自定义点位: {self.diy_point}")
+
+    def move_diy_point(self):
+        self.running_state = 501
+        self.paint_motion = 6
+        self.duco_cobot.servoj_pose(self.diy_point, self.vel, self.acc, '', '', '', True)
+        rospy.loginfo(f"已移动到自定义点位: {self.diy_point}")
+        self.running_state = 502
 
     # 堵枪清理动作
     def clog_function(self):
@@ -1084,6 +1099,19 @@ class system_control:
                         self.running_state = 800
                     rospy.loginfo(f"v2: {v2}\ntarget_dist_web: {self.target_dist_in_web}, \ndistance_now: {now_dist}")
                 
+                # 喷涂自定义点位
+                elif self.paint_motion == 6:
+                    target_dist = self.painting_dist
+                    now_dist = (self.get_directional_distance("left") + self.get_directional_distance("right")) / 2
+                    if abs(self.get_directional_distance("left") - self.get_directional_distance("right")) > 0.1:
+                        v2 = 0.0
+                    else:
+                        v2 = self.pid_dist_control(now_dist, target_dist, dt)  
+                    if not self.ob_flag and abs(target_dist - now_dist) < 0.05:
+                        self.car_state = [8, 8] # 车辆开车，喷涂机开喷   
+                        self.running_state = 800
+                    rospy.loginfo(f"v2: {v2}\ntarget_dist_web: {self.target_dist_in_web}, \ndistance_now: {now_dist}")
+
                 else:
                     v2 = 0.0
                 # rospy.logdebug("v2: %f" % v2)
@@ -1196,8 +1224,8 @@ class system_control:
                 #寻找五个位姿
                 elif key_input.find:
                     if not self.emergency_stop_flag:
-                        # self.find_central_pos_manual()
-                        self.find_central_pos()
+                        self.find_central_pos_manual()
+                        # self.find_central_pos()
                 #机械臂末端向  前
                 elif key_input.x0:
                     self.ob_status = 1
@@ -1290,7 +1318,12 @@ class system_control:
                 elif key_input.rz1: 
                     self.ob_status = 1
                     self.duco_cobot.speedl([0, 0, 0, 0, -v4, 0], self.acc, -1, False)
-
+                #记录自定义点位
+                elif key_input.record_diy_point:
+                    self.record_diy_point()
+                #移动到自定义点位
+                elif key_input.diy_point:
+                    self.move_diy_point()
 
                 # TODO 圆柱喷涂
                 # elif btn_y:
