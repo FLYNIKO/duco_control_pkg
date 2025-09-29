@@ -78,6 +78,7 @@ class system_control:
         self.position_flag = False
         self.find_mode = False
         self.ob_sidemotive_flag = False
+        self.diy_point_flag = False
         self.car_flag = False # 车辆标志，True-避障，False-正常
         self.car_state = [8, 8] # 第一个是车辆启动状态，2-停车，8-开车 | 第二个是喷涂机喷涂状态，2-停喷，8-开喷
         self.running_state = 0
@@ -189,6 +190,7 @@ class system_control:
             if key_input.multi or self.emergency_stop_flag:
                 rospy.logwarn("| 检测到紧急停止按键，正在执行紧急停止！ |")
                 self.running_state = 999
+                self.ob_flag = False
                 self.ob_status = 1
                 self.emergency_stop_flag = True
                 self.ob_sidemotive_flag = False
@@ -220,7 +222,9 @@ class system_control:
             ob_data = self.get_obstacle_status()
             if not ob_data['up']:
                 count += 1
-            rospy.sleep(0.25)
+            rospy.sleep(0.1)
+            if self.emergency_stop_flag:
+                return
         rospy.logwarn("| 恢复机械臂到之前点位 |")
         rospy.sleep(0.5)
         self.car_state = [2, 2]
@@ -292,6 +296,7 @@ class system_control:
                                     self.running_state = 810
                                     self.ob_safe_pos()
                                     self.running_state = 800
+                                    self.ob_flag = False
                                 else:
                                     self.ob_sidemotive_flag = True
                                     self.car_state = [8, 2] # 车辆开车，喷涂机停喷
@@ -316,15 +321,18 @@ class system_control:
                                             self.running_state = 821
                                             self.ob_sidemotive_flag = False
                                             self.ob_flag = False
+                                            break
+                                    self.running_state = 800
                         
                             elif ob_data['right_mid'] and self.car_direction == 1:
                                 self.duco_ob.stop(True)
                                 self.ob_flag = True
                                 ob_data = self.get_obstacle_status()
-                                if ob_data['left_rear']:
+                                if ob_data['right_rear']:
                                     self.running_state = 810
                                     self.ob_safe_pos()
                                     self.running_state = 800
+                                    self.ob_flag = False
                                 else:
                                     self.ob_sidemotive_flag = True
                                     self.car_state = [8, 2] # 车辆开车，喷涂机停喷
@@ -336,7 +344,7 @@ class system_control:
                                         rospy.loginfo("--------------------------------")
                                         for key in obstacle_keys:
                                             if ob_data.get(key):
-                                                rospy.logwarn(f"| obobob  L  检测到{key}障碍物，注意操作！ |")
+                                                rospy.logwarn(f"| obobob  R  检测到{key}障碍物，注意操作！ |")
 
                                         while ob_data['right_mid']:
                                             ob_data = self.get_obstacle_status()
@@ -349,6 +357,8 @@ class system_control:
                                             self.running_state = 821
                                             self.ob_sidemotive_flag = False
                                             self.ob_flag = False
+                                            break
+                                    self.running_state = 800
                             else:
                                 self.ob_flag = False
 
@@ -635,13 +645,13 @@ class system_control:
         """
         return self.directional_laser.get_front_distance(direction)
     
-    def get_all_directional_distances(self):
+    def get_distance(self, direction):
         """
         获取所有方向的距离值
         Returns:
             dict: 包含所有方向距离值的字典
         """
-        return self.directional_laser.get_all_front_distances()
+        return self.directional_laser.get_distance(direction)
     
     def get_car_state(self):
         """
@@ -649,7 +659,7 @@ class system_control:
         Returns:
             list: 包含车辆状态信息的列表
         """
-        return self.car_state, self.running_state, [self.get_directional_distance("left"), self.get_directional_distance("right"), self.get_directional_distance("main"), 0]
+        return self.car_state, self.running_state, [self.get_directional_distance("left"), self.get_directional_distance("right"), self.get_distance("up"), 0]
         
         # 读取/topic中的按键输入
     def _keys_callback(self, msg):
@@ -700,15 +710,20 @@ class system_control:
         )
     def record_diy_point(self):
         self.running_state = 500
+        self.diy_point_flag = False
         self.diy_point = self.duco_cobot.get_tcp_pose()
+        self.diy_point_flag = True
         rospy.loginfo(f"已记录自定义点位: {self.diy_point}")
 
     def move_diy_point(self):
         self.running_state = 501
         self.paint_motion = 6
-        self.duco_cobot.servoj_pose(self.diy_point, self.vel, self.acc, '', '', '', True)
-        rospy.loginfo(f"已移动到自定义点位: {self.diy_point}")
-        self.running_state = 502
+        if self.diy_point_flag:
+            self.duco_cobot.servoj_pose(self.diy_point, self.vel, self.acc, '', '', '', True)
+            rospy.loginfo(f"已移动到自定义点位: {self.diy_point}")
+            self.running_state = 502
+        else:
+            pass
 
     # 堵枪清理动作
     def clog_function(self):
@@ -900,7 +915,7 @@ class system_control:
             self.duco_cobot.movel(center_pos, self.vel, self.acc, 0, '', '', '', True)
             # 计算当前喷涂距离，并移动到目标喷涂距离
             dist = self.get_directional_distance("right")
-            center_pos[0] -= dist - self.painting_dist + 0.2
+            center_pos[0] -= dist - 0.35
             self.duco_cobot.movel(center_pos, self.vel, self.acc, 0, '', '', '', True)
             self.paint_center = center_pos
 
@@ -1070,24 +1085,21 @@ class system_control:
                         v2 = self.pid_dist_control(now_dist, target_dist, dt)
                     if not self.ob_flag and abs(target_dist - now_dist) < 0.05:
                         self.car_state = [8, 8] # 车辆开车，喷涂机开喷
-                        self.running_state = 800
+                        
                     rospy.loginfo(f"v2: {v2}\ntarget_dist_in_flange: {self.target_dist_in_flange}, \ndistance_now: {now_dist}")
 
                 # 喷涂上下表面
-                elif (self.paint_motion == 1 or self.paint_motion == 5) and (self.last_line_time - time.time() < 1):
+                elif self.paint_motion == 1 or self.paint_motion == 5:
                     target_dist = self.target_dist_in_surface
                     now_dist = self.surface_distance
-                    if abs(self.get_directional_distance("left") - self.get_directional_distance("right")) > 0.1:
-                        v2 = 0.0
-                    else:
-                        v2 = self.pid_dist_control(now_dist, target_dist, dt)
+                    v2 = self.pid_dist_control(now_dist, target_dist, dt)
                     if not self.ob_flag and abs(target_dist - now_dist) < 0.05:
                         self.car_state = [8, 8] # 车辆开车，喷涂机开喷
-                        self.running_state = 800
+                        
                     rospy.loginfo(f"v2: {v2}\ntarget_dist_in_surface: {self.target_dist_in_surface}, \ndistance_now: {now_dist}")
                 
                 # 喷涂中腹板
-                elif self.paint_motion == 3 and (self.last_H_time - time.time() < 1):
+                elif self.paint_motion == 3:
                     target_dist = self.target_dist_in_web
                     now_dist = (self.get_directional_distance("left") + self.get_directional_distance("right")) / 2
                     if abs(self.get_directional_distance("left") - self.get_directional_distance("right")) > 0.1:
@@ -1096,7 +1108,7 @@ class system_control:
                         v2 = self.pid_dist_control(now_dist, target_dist, dt)  
                     if not self.ob_flag and abs(target_dist - now_dist) < 0.05:
                         self.car_state = [8, 8] # 车辆开车，喷涂机开喷   
-                        self.running_state = 800
+                        
                     rospy.loginfo(f"v2: {v2}\ntarget_dist_web: {self.target_dist_in_web}, \ndistance_now: {now_dist}")
                 
                 # 喷涂自定义点位
@@ -1109,7 +1121,7 @@ class system_control:
                         v2 = self.pid_dist_control(now_dist, target_dist, dt)  
                     if not self.ob_flag and abs(target_dist - now_dist) < 0.05:
                         self.car_state = [8, 8] # 车辆开车，喷涂机开喷   
-                        self.running_state = 800
+                        
                     rospy.loginfo(f"v2: {v2}\ntarget_dist_web: {self.target_dist_in_web}, \ndistance_now: {now_dist}")
 
                 else:
@@ -1224,20 +1236,16 @@ class system_control:
                 #寻找五个位姿
                 elif key_input.find:
                     if not self.emergency_stop_flag:
-                        self.find_central_pos_manual()
-                        # self.find_central_pos()
+                        # self.find_central_pos_manual()
+                        self.find_central_pos()
                 #机械臂末端向  前
                 elif key_input.x0:
                     self.ob_status = 1
                     self.duco_cobot.speedl([0, 0, v2, 0, 0, 0],self.acc ,-1, False)
-                    now_dist = self.get_directional_distance("main")
-                    rospy.loginfo(f"distance_now: {now_dist}")
                 #机械臂末端向  后
                 elif key_input.x1:
                     self.ob_status = 1
                     self.duco_cobot.speedl([0, 0, -v2, 0, 0, 0],self.acc ,-1, False)
-                    now_dist = self.get_directional_distance("main")
-                    rospy.loginfo(f"distance_now: {now_dist}")
                 #机械臂末端向  右
                 elif key_input.y1:
                     self.ob_status = 1
@@ -1250,14 +1258,10 @@ class system_control:
                 elif key_input.z1: 
                     self.ob_status = 1
                     self.duco_cobot.speedl([0, v1, 0, 0, 0, 0],self.acc ,-1, False)
-                    now_dist = self.get_directional_distance("right")
-                    rospy.loginfo(f"distance_now: {now_dist}")
                 #机械臂末端向  下
                 elif key_input.z0:
                     self.ob_status = 1
                     self.duco_cobot.speedl([0, -v1, 0, 0, 0, 0],self.acc ,-1, False)
-                    now_dist = self.get_directional_distance("right")
-                    rospy.loginfo(f"distance_now: {now_dist}")
                 #初始化位置
                 elif key_input.init:                    
                     self.ob_status = 1
@@ -1321,6 +1325,7 @@ class system_control:
                 #记录自定义点位
                 elif key_input.record_diy_point:
                     self.record_diy_point()
+
                 #移动到自定义点位
                 elif key_input.diy_point:
                     self.move_diy_point()

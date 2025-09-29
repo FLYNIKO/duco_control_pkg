@@ -131,7 +131,7 @@ class TripleRadarFrontDistance:
     def _update_compatibility_distances(self):
         """更新兼容性距离值，使用主雷达的数据"""
         # 使用主雷达的数据来更新兼容性接口
-        main_radar = self.radars['main']
+        main_radar = self.radars['left']
         if main_radar['latest_scan'] is not None:
             scan = main_radar['latest_scan']
             
@@ -179,9 +179,9 @@ class TripleRadarFrontDistance:
             return -1
             
         # 检查数据是否超时（使用主雷达的时间）
-        main_radar = self.radars['main']
-        if time.time() - main_radar['last_scan_time'] > self.scan_timeout:
-            rospy.logwarn(f"主雷达数据超时，最后更新时间: {main_radar['last_scan_time']}")
+        left_radar = self.radars['left']
+        if time.time() - left_radar['last_scan_time'] > self.scan_timeout:
+            rospy.logwarn(f"主雷达数据超时，最后更新时间: {left_radar['last_scan_time']}")
             return -1
             
         return self.distances[direction]

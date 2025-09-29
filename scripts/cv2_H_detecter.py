@@ -16,6 +16,7 @@ from duco_control_pkg.msg import LineInfo, LineDetectionArray
 class StableRadarLineDetector:
     def __init__(self):
         rospy.init_node('stable_radar_line_detector')
+        # 302行修改
         self.debug_mode = True
         # Parameters for image conversion
         self.image_size = 800
@@ -48,10 +49,10 @@ class StableRadarLineDetector:
         self.line_id_counter = 0
         
         # Line tracking and stability parameters
-        self.position_threshold = 0.50   # 放宽位置阈值（暴力拟合
-        self.angle_threshold = 30       # 放宽角度阈值（暴力拟合
-        self.stability_requirement = 2  # 降低稳定性要求，只需要2帧
-        self.max_line_age = 6          # 增加最大线龄
+        self.position_threshold = 0.28   # 放宽位置阈值（暴力拟合
+        self.angle_threshold = 20       # 放宽角度阈值（暴力拟合
+        self.stability_requirement = 3  # 降低稳定性要求，只需要2帧
+        self.max_line_age = 4          # 增加最大线龄
         
         # Advanced filtering parameters
         self.min_line_length_meters = 0.25  # 适当提高最小线长要求
@@ -238,9 +239,9 @@ class StableRadarLineDetector:
         """Classify line as web or flange based on length and characteristics"""
         length = line_props['length']
         deg = line_props['angle_deg']
-        if (length >= self.min_line_length_meters) or (self.min_line_deg-5 < deg < self.min_line_deg+5):
+        if (length >= self.min_line_length_meters) and (self.min_line_deg-15 < deg < self.min_line_deg+15):
             return 'web'  # Longer lines are likely webs
-        elif length >= self.min_flange_length_meters:
+        elif (self.min_line_length_meters >= length >= self.min_flange_length_meters) and not (self.min_line_deg-15 < deg < self.min_line_deg+15):
             return 'flange'  # Shorter lines are likely flanges
         else:
             return 'noise'  # Too short to be useful
@@ -299,7 +300,7 @@ class StableRadarLineDetector:
                 # Check if flange is close to the web
                 distance_to_web = self.point_to_line_distance(flange_midpoint, web['properties'])
                 
-                if angle_diff < 15 and distance_to_web < 0.5:  # 25 degrees tolerance, 0.5m distance
+                if angle_diff < 25 and distance_to_web < 0.8:  # 25 degrees tolerance, 0.5m distance
                     associated_flanges.append(flange)
             
             # Create H-beam structure
@@ -1020,6 +1021,12 @@ class StableRadarLineDetector:
                 
                 # Re-analyze stable lines for H-beam structures
                 stable_h_beams, stable_standalone, standalone_webs = self.detect_h_beam_structures(self.stable_lines)
+                
+                # 如果稳定检测没有结果，使用当前帧的检测结果
+                if len(stable_h_beams) == 0 and len(h_beams) > 0:
+                    print("使用当前帧检测结果作为备选")
+                    stable_h_beams = h_beams
+                    stable_standalone = standalone_flanges
                 
                 # Publish results
                 self.publish_scan_points(scan_msg)
