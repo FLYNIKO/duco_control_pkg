@@ -153,7 +153,7 @@ class system_control:
         self.center_history = deque(maxlen=self.obstacle_filter_frames)
         self.up_history = deque(maxlen=self.obstacle_filter_frames)
         self.down_history = deque(maxlen=self.obstacle_filter_frames)
-
+        
         # H检测历史信息存储（用于3次取平均）
         self.H_detection_history = deque(maxlen=3)  # 存储最近3次的有效H检测信息
         self.H_processing_ready = False  # 标记是否已经收集到3次有效信息
@@ -207,30 +207,6 @@ class system_control:
                     self.duco_stop.switch_mode(1)          
             self._stop_event.wait(0.05)
 
-    def ob_safe_pos(self):
-        # 1. 记录当前点位
-        original_pos = self.duco_ob.get_tcp_pose()
-        self.car_state = [2, 2]
-        rospy.logwarn("| 检测到侧障碍物，回收机械臂到安全位置 |")
-        self.duco_ob.servoj_pose(self.safe_pos, self.ob_vel, self.acc, '', '', '', True)
-        rospy.sleep(0.5)
-        rospy.logwarn("| 机械臂已移动到安全位置 |")
-        self.car_state = [8, 2]
-
-        count = 0
-        while count < 10:
-            ob_data = self.get_obstacle_status()
-            if not ob_data['up']:
-                count += 1
-            rospy.sleep(0.1)
-            if self.emergency_stop_flag:
-                return
-        rospy.logwarn("| 恢复机械臂到之前点位 |")
-        rospy.sleep(0.5)
-        self.car_state = [2, 2]
-        self.duco_ob.servoj_pose([self.paint_center[0], self.paint_center[1], original_pos[2], self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.acc, '', '', '', True)
-        rospy.logwarn("| 机械臂已恢复 |")
-
     def ob_thread(self):
         self._ob_event = threading.Event()
         self.duco_ob = DucoCobot(self.ip, PORT)
@@ -281,84 +257,165 @@ class system_control:
                     elif self.ob_status == 2: # 自动sync 避障逻辑
                         if self.paint_motion == 1 or self.paint_motion == 5 or self.paint_motion == 2 or self.paint_motion == 4 or self.paint_motion == 3 or self.paint_motion == 6:
 
-                            if (ob_data['left_mid'] and ob_data['left_rear'] and self.car_direction == 0) or (ob_data['right_mid'] and ob_data['right_rear'] and self.car_direction == 1):
+                            if ob_data['left_mid'] and ob_data['left_rear'] and self.car_direction == 0:
+                                # 停车停喷
+                                self.car_state = [2, 2] 
                                 self.duco_ob.stop(True)
                                 self.ob_flag = True
-                                self.running_state = 810
-                                self.ob_safe_pos()
+                                ob_data = self.get_obstacle_status()
+                                self.ob_sidemotive_flag = True
+                                # 记录点位
+                                origin_pos = self.duco_ob.get_tcp_pose() 
+                                self.running_state = 820
+                                start_time = time.time()
+                                count = 0
+                                # 维修位
+                                self.duco_ob.movel([self.serv_pos[0], origin_pos[1], origin_pos[2], origin_pos[3], origin_pos[4], origin_pos[5]], self.ob_vel, self.ob_acc, 0, '', '', '', True)
+                                self.duco_ob.movel(self.serv_pos, self.ob_vel, self.ob_acc, 0, '', '', '', True)
+                                
+                                # 初始化突变检测相关变量
+                                prev_distance = self.get_distance("right", "up")
+                                jump_count = 0
+                                # 开车停喷
+                                self.car_state = [8, 2] 
+                                while self.ob_sidemotive_flag:
+                                    # 获取当前距离
+                                    current_distance = self.get_distance("right", "up")
+                                    
+                                    # 对比并记录突变（确保都是有效值）
+                                    if current_distance > 0 and prev_distance > 0:
+                                        distance_diff = abs(current_distance - prev_distance)
+                                        if distance_diff > 0.1:
+                                            jump_count += 1
+                                            rospy.loginfo(f"检测到第{jump_count}次突变，当前距离: {current_distance:.3f}m, 上次距离: {prev_distance:.3f}m, 差值: {distance_diff:.3f}m")
+                                            
+                                            if jump_count >= 2:
+                                                rospy.loginfo("检测到第二次突变，退出循环")
+                                                self.car_state = [2, 2]  # 车辆停车，喷涂机停喷
+                                                self.running_state = 821
+                                                self.ob_sidemotive_flag = False
+                                                self.ob_flag = False
+                                                break
+                                    
+                                    # 更新上一次的距离（只在有效值时更新）
+                                    if current_distance > 0:
+                                        prev_distance = current_distance
+                                    # 等待0.1秒
+                                    rospy.sleep(0.1)
+                                # 恢复点位
+                                self.duco_ob.movel([self.init_pos[0], origin_pos[1], origin_pos[2], self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, 0, '', '', '', True)
+                                self.running_state = 800
+
+                            elif ob_data['right_mid'] and ob_data['right_rear'] and self.car_direction == 1:
+                                # 停车停喷
+                                self.car_state = [2, 2] 
+                                self.duco_ob.stop(True)
+                                self.ob_flag = True
+                                ob_data = self.get_obstacle_status()
+                                self.ob_sidemotive_flag = True
+                                # 记录点位
+                                origin_pos = self.duco_ob.get_tcp_pose() 
+                                self.running_state = 820
+                                start_time = time.time()
+                                count = 0
+                                # 维修位
+                                self.duco_ob.movel([self.serv_pos[0], origin_pos[1], origin_pos[2], origin_pos[3], origin_pos[4], origin_pos[5]], self.ob_vel, self.ob_acc, 0, '', '', '', True)
+                                self.duco_ob.movel(self.serv_pos, self.ob_vel, self.ob_acc, 0, '', '', '', True)
+                                
+                                # 初始化突变检测相关变量
+                                prev_distance = self.get_distance("left", "up")
+                                jump_count = 0
+                                # 开车停喷
+                                self.car_state = [8, 2] 
+                                while self.ob_sidemotive_flag:
+                                    # 获取当前距离
+                                    current_distance = self.get_distance("left", "up")
+                                    
+                                    # 对比并记录突变（确保都是有效值）
+                                    if current_distance > 0 and prev_distance > 0:
+                                        distance_diff = abs(current_distance - prev_distance)
+                                        if distance_diff > 0.1:
+                                            jump_count += 1
+                                            rospy.loginfo(f"检测到第{jump_count}次突变，当前距离: {current_distance:.3f}m, 上次距离: {prev_distance:.3f}m, 差值: {distance_diff:.3f}m")
+                                            
+                                            if jump_count >= 2:
+                                                rospy.loginfo("检测到第二次突变，退出循环")
+                                                self.car_state = [2, 2]  # 车辆停车，喷涂机停喷
+                                                self.running_state = 821
+                                                self.ob_sidemotive_flag = False
+                                                self.ob_flag = False
+                                                break
+                                    
+                                    # 更新上一次的距离（只在有效值时更新）
+                                    if current_distance > 0:
+                                        prev_distance = current_distance
+                                    # 等待0.1秒
+                                    rospy.sleep(0.1)
+                                # 恢复点位
+                                self.duco_ob.movel([self.init_pos[0], origin_pos[1], origin_pos[2], self.init_pos[3], self.init_pos[4], self.init_pos[5]], self.ob_vel, self.ob_acc, 0, '', '', '', True)
                                 self.running_state = 800
 
                             elif ob_data['left_mid'] and self.car_direction == 0:
                                 self.duco_ob.stop(True)
                                 self.ob_flag = True
                                 ob_data = self.get_obstacle_status()
-                                if ob_data['left_rear']:
-                                    self.running_state = 810
-                                    self.ob_safe_pos()
-                                    self.running_state = 800
-                                    self.ob_flag = False
-                                else:
-                                    self.ob_sidemotive_flag = True
-                                    self.car_state = [8, 2] # 车辆开车，喷涂机停喷
-                                    self.running_state = 820
-                                    start_time = time.time()
-                                    while self.ob_sidemotive_flag:
-                                        ob_data = self.get_obstacle_status()
-                                        obstacle_keys = ['left_front', 'left_mid', 'left_rear', 'right_front', 'right_mid', 'right_rear', 'center', 'up', 'down']
-                                        rospy.loginfo("--------------------------------")
-                                        for key in obstacle_keys:
-                                            if ob_data.get(key):
-                                                rospy.logwarn(f"| obobob  L  检测到{key}障碍物，注意操作！ |")
+                                
+                                self.ob_sidemotive_flag = True
+                                self.car_state = [8, 2] # 车辆开车，喷涂机停喷
+                                self.running_state = 820
+                                start_time = time.time()
+                                while self.ob_sidemotive_flag:
+                                    ob_data = self.get_obstacle_status()
+                                    obstacle_keys = ['left_front', 'left_mid', 'left_rear', 'right_front', 'right_mid', 'right_rear', 'center', 'up', 'down']
+                                    rospy.loginfo("--------------------------------")
+                                    for key in obstacle_keys:
+                                        if ob_data.get(key):
+                                            rospy.logwarn(f"| obobob  L  检测到{key}障碍物，注意操作！ |")
 
-                                        while ob_data['left_mid']:
-                                            ob_data = self.get_obstacle_status()
-                                            self.duco_ob.speedl([0, 0, -OB_VELOCITY, 0, 0, 0],self.acc ,-1, False)
-                                            rospy.sleep(0.05)
-                                        self.duco_ob.speed_stop(False)
-                                        if (not ob_data['center'] and not ob_data['left_front'] and ob_data['right_front']) or ((not ob_data['center'] and not ob_data['left_front'] and not ob_data['right_front']) and (time.time() - start_time) > 10):
-                                            # rospy.sleep(0.2)
-                                            self.car_state = [2, 2] # 车辆停车，喷涂机停喷
-                                            self.running_state = 821
-                                            self.ob_sidemotive_flag = False
-                                            self.ob_flag = False
-                                            break
-                                    self.running_state = 800
+                                    while ob_data['left_mid']:
+                                        ob_data = self.get_obstacle_status()
+                                        self.duco_ob.speedl([0, 0, -OB_VELOCITY, 0, 0, 0],self.acc ,-1, False)
+                                        rospy.sleep(0.05)
+                                    self.duco_ob.speed_stop(False)
+                                    if (not ob_data['center'] and not ob_data['left_front'] and ob_data['right_front']) or ((not ob_data['center'] and not ob_data['left_front'] and not ob_data['right_front']) and (time.time() - start_time) > 10):
+                                        # rospy.sleep(0.2)
+                                        self.car_state = [2, 2] # 车辆停车，喷涂机停喷
+                                        self.running_state = 821
+                                        self.ob_sidemotive_flag = False
+                                        self.ob_flag = False
+                                        break
+                                self.running_state = 800
                         
                             elif ob_data['right_mid'] and self.car_direction == 1:
                                 self.duco_ob.stop(True)
                                 self.ob_flag = True
                                 ob_data = self.get_obstacle_status()
-                                if ob_data['right_rear']:
-                                    self.running_state = 810
-                                    self.ob_safe_pos()
-                                    self.running_state = 800
-                                    self.ob_flag = False
-                                else:
-                                    self.ob_sidemotive_flag = True
-                                    self.car_state = [8, 2] # 车辆开车，喷涂机停喷
-                                    self.running_state = 820
-                                    start_time = time.time()
-                                    while self.ob_sidemotive_flag:
-                                        ob_data = self.get_obstacle_status()
-                                        obstacle_keys = ['left_front', 'left_mid', 'left_rear', 'right_front', 'right_mid', 'right_rear', 'center', 'up', 'down']
-                                        rospy.loginfo("--------------------------------")
-                                        for key in obstacle_keys:
-                                            if ob_data.get(key):
-                                                rospy.logwarn(f"| obobob  R  检测到{key}障碍物，注意操作！ |")
+                                
+                                self.ob_sidemotive_flag = True
+                                self.car_state = [8, 2] # 车辆开车，喷涂机停喷
+                                self.running_state = 820
+                                start_time = time.time()
+                                while self.ob_sidemotive_flag:
+                                    ob_data = self.get_obstacle_status()
+                                    obstacle_keys = ['left_front', 'left_mid', 'left_rear', 'right_front', 'right_mid', 'right_rear', 'center', 'up', 'down']
+                                    rospy.loginfo("--------------------------------")
+                                    for key in obstacle_keys:
+                                        if ob_data.get(key):
+                                            rospy.logwarn(f"| obobob  R  检测到{key}障碍物，注意操作！ |")
 
-                                        while ob_data['right_mid']:
-                                            ob_data = self.get_obstacle_status()
-                                            self.duco_ob.speedl([0, 0, -OB_VELOCITY, 0, 0, 0],self.acc ,-1, False)
-                                            rospy.sleep(0.05)
-                                        self.duco_ob.speed_stop(False)
-                                        if (not ob_data['center'] and ob_data['left_front'] and not ob_data['right_front']) or ((not ob_data['center'] and not ob_data['left_front'] and not ob_data['right_front']) and (time.time() - start_time) > 10):
-                                            # rospy.sleep(0.2)
-                                            self.car_state = [2, 2] # 车辆停车，喷涂机停喷
-                                            self.running_state = 821
-                                            self.ob_sidemotive_flag = False
-                                            self.ob_flag = False
-                                            break
-                                    self.running_state = 800
+                                    while ob_data['right_mid']:
+                                        ob_data = self.get_obstacle_status()
+                                        self.duco_ob.speedl([0, 0, -OB_VELOCITY, 0, 0, 0],self.acc ,-1, False)
+                                        rospy.sleep(0.05)
+                                    self.duco_ob.speed_stop(False)
+                                    if (not ob_data['center'] and ob_data['left_front'] and not ob_data['right_front']) or ((not ob_data['center'] and not ob_data['left_front'] and not ob_data['right_front']) and (time.time() - start_time) > 10):
+                                        # rospy.sleep(0.2)
+                                        self.car_state = [2, 2] # 车辆停车，喷涂机停喷
+                                        self.running_state = 821
+                                        self.ob_sidemotive_flag = False
+                                        self.ob_flag = False
+                                        break
+                                self.running_state = 800
                             else:
                                 self.ob_flag = False
 
@@ -645,13 +702,15 @@ class system_control:
         """
         return self.directional_laser.get_front_distance(direction)
     
-    def get_distance(self, direction):
+    def get_distance(self, radar, direction):
         """
         获取所有方向的距离值
         Returns:
             dict: 包含所有方向距离值的字典
+            main up->right
+            main down->left
         """
-        return self.directional_laser.get_distance(direction)
+        return self.directional_laser.get_distance(radar, direction)
     
     def get_car_state(self):
         """
@@ -659,7 +718,7 @@ class system_control:
         Returns:
             list: 包含车辆状态信息的列表
         """
-        return self.car_state, self.running_state, [self.get_directional_distance("left"), self.get_directional_distance("right"), self.get_distance("up"), 0]
+        return self.car_state, self.running_state, [self.get_distance("left", "front"), self.get_distance("right", "front"), self.get_distance("left", "up"), 0]
         
         # 读取/topic中的按键输入
     def _keys_callback(self, msg):
