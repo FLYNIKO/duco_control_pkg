@@ -55,7 +55,9 @@ class DemoApp:
             if self.sys_ctrl is not None:
                 car_state, running_state, distances = self.sys_ctrl.get_car_state()
             else:
-                car_state = [0, 0]  # 默认值
+                distances = [0, 0, 0, 0]
+                running_state = 0
+                car_state = [0, 0]
             self.tcp_state = tcp_state
             # 发布 ROS topic
             msg = Float64MultiArray()

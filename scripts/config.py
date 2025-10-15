@@ -12,15 +12,15 @@ OB_THRESHOLD_M = 0.35 # 中区阈值（左右区绝对值）
 OB_THRESHOLD_U = 0.2 # 上区阈值
 OB_THRESHOLD_D = -0.25 # 下区阈值
 OB_THRESHOLD_FRONT_MID = -0.2 # 前中分界线
-OB_THRESHOLD_MID_REAR = 0.35 # 中后分界线=需要再进行测试以适应交叉梁=TODO
+OB_THRESHOLD_MID_REAR = 0.2 # 中后分界线=需要再进行测试以适应交叉梁=TODO
 OB_SAFE_DISTANCE_F = 0.6 # 上、下、前安全距离
 OB_SAFE_DISTANCE = 0.85 # 安全距离
 OB_FORWARD_MIN = -0.15 # 前方最小距离
 OB_FORWARD_MAX = -2 # 前方最大距离
 
 # IP = '192.168.100.10' # 虚拟机IP地址 虚拟机
-IP = '192.168.0.168' # 机械臂IP地址 0
-# IP = '192.168.0.96' # 机械臂IP地址 1
+# IP = '192.168.0.168' # 机械臂IP地址 0
+IP = '192.168.0.96' # 机械臂IP地址 1
 
 PORT = 7003 # 机械臂端口号
 DEBUG_MODE = False # 是否显示openCV调试窗口
@@ -39,9 +39,9 @@ PAINTDEG = 90 # 喷涂角度(圆柱)
 PAINTWIDTH = 0.15 # 喷涂宽度(圆柱)
 
 INIT_POS = [-0.8, -0.2, 1.2, -1.57, 0.0, 1.57] # 初始位置
-SERV_POS = [-1.0, -0.2, -0.37, -1.57, 0.0, 1.57] # 维修位置
+SERV_POS = [-1.0, -0.2, -0.43, -1.57, 0.0, 1.57] # 维修位置
 CLOG_POS = [-1.0, -0.2, 0.2, -1.57, 0.0, 1.57] # 堵枪位置
-SAFE_POS = [-0.257, -0.2, 0.76, -1.57, 0.0, 1.57] # 安全位置
+SAFE_POS = [-0.88, -0.2, -0.422, -1.57, 0.0, 1.57] # 安全位置
 
 KEYTIMEOUT = 2 # 键盘输入超时时间(s)
 TIMEOUT = 2 # 传感器超时时间(s)
